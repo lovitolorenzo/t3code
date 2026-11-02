@@ -1,6 +1,6 @@
 import type { ContextMenuItem } from "@t3tools/contracts";
 import type { SnoozePreset } from "@t3tools/client-runtime/state/thread-settled";
-import type { SidebarFolder } from "../sidebarFolders.logic";
+import type { FolderPositionMove, SidebarFolder } from "../sidebarFolders.logic";
 
 export type ThreadActionMenuId =
   | "new-thread-on-branch"
@@ -21,6 +21,8 @@ export type ThreadActionMenuId =
   | "mark-unread"
   | "folder"
   | `folder:${string}`
+  | "folder-position"
+  | `folder-position:${FolderPositionMove}`
   | "share-guest"
   | "copy"
   | "copy-path"
@@ -97,6 +99,14 @@ export interface ThreadActionMenuState {
     readonly items: ReadonlyArray<SidebarFolder>;
     readonly currentId: string | null;
   };
+  /** Where the row sits in its folder group, when the sidebar shows one. */
+  readonly folderPosition?: { readonly canMoveUp: boolean; readonly canMoveDown: boolean };
+}
+
+export function parseFolderPositionAction(action: string): FolderPositionMove | null {
+  if (!action.startsWith("folder-position:")) return null;
+  const move = action.slice("folder-position:".length);
+  return move === "top" || move === "up" || move === "down" || move === "bottom" ? move : null;
 }
 
 export type SidebarFolderMenuId = "folder" | `folder:${string}`;
@@ -146,7 +156,9 @@ export function buildFolderMenuItem(input: {
 
 /** Local navigation, read markers, and copying remain available to read-only clients. */
 export function threadActionRequiresOperate(action: ThreadActionMenuId): boolean {
-  if (action === "folder" || action.startsWith("folder:")) return false;
+  if (action === "folder" || action.startsWith("folder:") || action.startsWith("folder-position")) {
+    return false;
+  }
   return ![
     "new-thread-on-branch",
     "project-settings",
@@ -219,6 +231,38 @@ export function buildThreadActionMenuItems(
     { id: "mark-unread", label: "Mark unread", icon: "mail-open" },
     ...(state.folders
       ? [buildFolderMenuItem({ folders: state.folders.items, currentId: state.folders.currentId })]
+      : []),
+    ...(state.folderPosition
+      ? [
+          {
+            id: "folder-position" as const,
+            label: "Position in folder",
+            icon: "folder-tree",
+            disabled: !state.folderPosition.canMoveUp && !state.folderPosition.canMoveDown,
+            children: [
+              {
+                id: "folder-position:top" as const,
+                label: "Move to top",
+                disabled: !state.folderPosition.canMoveUp,
+              },
+              {
+                id: "folder-position:up" as const,
+                label: "Move up",
+                disabled: !state.folderPosition.canMoveUp,
+              },
+              {
+                id: "folder-position:down" as const,
+                label: "Move down",
+                disabled: !state.folderPosition.canMoveDown,
+              },
+              {
+                id: "folder-position:bottom" as const,
+                label: "Move to bottom",
+                disabled: !state.folderPosition.canMoveDown,
+              },
+            ],
+          },
+        ]
       : []),
     ...(state.canShareWithGuest
       ? [{ id: "share-guest" as const, label: "Share with guest", icon: "user-plus" }]

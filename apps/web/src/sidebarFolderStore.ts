@@ -17,6 +17,7 @@ import {
   setActiveFolder,
   setDraftFolderChoice,
   setFolderColor,
+  setFolderThreadOrder,
   settlePromotedDraft,
   toggleFolderCollapsed,
   type SidebarFolderColor,
@@ -47,6 +48,7 @@ function persistFolders(state: SidebarFolderState): void {
         folderChoiceByDraftId: state.folderChoiceByDraftId,
         dismissedSuggestionByThreadKey: state.dismissedSuggestionByThreadKey,
         collapsedFolderIds: state.collapsedFolderIds,
+        threadOrderByFolder: state.threadOrderByFolder,
       } satisfies SidebarFolderState),
     );
   } catch {}
@@ -65,6 +67,8 @@ interface SidebarFolderStore extends SidebarFolderState {
   readonly forgetDraft: (draftId: string) => void;
   readonly dismissSuggestion: (threadKey: string, folderId: string) => void;
   readonly toggleFolderCollapsed: (folderId: string) => void;
+  /** Places the folder's rows in this order. */
+  readonly setFolderOrder: (folderId: string, order: ReadonlyArray<string>) => void;
 }
 
 function pickState(store: SidebarFolderStore): SidebarFolderState {
@@ -75,6 +79,7 @@ function pickState(store: SidebarFolderStore): SidebarFolderState {
     folderChoiceByDraftId: store.folderChoiceByDraftId,
     dismissedSuggestionByThreadKey: store.dismissedSuggestionByThreadKey,
     collapsedFolderIds: store.collapsedFolderIds,
+    threadOrderByFolder: store.threadOrderByFolder,
   };
 }
 
@@ -109,6 +114,8 @@ export const useSidebarFolderStore = create<SidebarFolderStore>()((set, get) => 
     dismissSuggestion: (threadKey, folderId) =>
       apply((state) => dismissSuggestion(state, threadKey, folderId)),
     toggleFolderCollapsed: (folderId) => apply((state) => toggleFolderCollapsed(state, folderId)),
+    setFolderOrder: (folderId, order) =>
+      apply((state) => setFolderThreadOrder(state, folderId, order)),
     forgetDraft: (draftId) =>
       apply((state) => {
         if (!(draftId in state.folderChoiceByDraftId)) return state;
