@@ -11,6 +11,8 @@ import {
   setActiveFolder,
   setFolderColor,
   groupThreadsByFolder,
+  setFolderThreadOrder,
+  moveInFolderOrder,
   toggleFolderCollapsed,
   resolveDraftFolderId,
   setDraftFolderChoice,
@@ -102,6 +104,7 @@ describe("sidebar folders", () => {
       folderChoiceByDraftId: {},
       dismissedSuggestionByThreadKey: {},
       collapsedFolderIds: [],
+      threadOrderByFolder: {},
     });
     expect(parseSidebarFolderState("garbage")).toEqual(EMPTY_SIDEBAR_FOLDER_STATE);
   });
@@ -155,5 +158,30 @@ describe("sidebar folders", () => {
     expect(closed.collapsedFolderIds).toEqual(["ci"]);
     expect(toggleFolderCollapsed(closed, "ci").collapsedFolderIds).toEqual([]);
     expect(deleteFolder(closed, "ci").collapsedFolderIds).toEqual([]);
+  });
+
+  it("orders a folder's rows as the user dragged them, newcomers first", () => {
+    const filed = moveThreadsToFolder(withFolders, ["a", "b", "c", "d"], "ci");
+    const placed = setFolderThreadOrder(filed, "ci", ["c", "a", "b"]);
+    const { groups } = groupThreadsByFolder(
+      ["a", "b", "c", "d"],
+      (key) => key,
+      placed.folders,
+      placed.folderIdByThreadKey,
+      placed.threadOrderByFolder,
+    );
+    expect(groups[0]?.threads).toEqual(["d", "c", "a", "b"]);
+    expect(setFolderThreadOrder(placed, "ci", ["c", "a", "b"])).toBe(placed);
+    expect(deleteFolder(placed, "ci").threadOrderByFolder).toEqual({});
+  });
+
+  it("moves a row to the top, up, down or to the bottom of its folder", () => {
+    const order = ["a", "b", "c", "d"];
+    expect(moveInFolderOrder(order, "c", "top")).toEqual(["c", "a", "b", "d"]);
+    expect(moveInFolderOrder(order, "c", "up")).toEqual(["a", "c", "b", "d"]);
+    expect(moveInFolderOrder(order, "b", "down")).toEqual(["a", "c", "b", "d"]);
+    expect(moveInFolderOrder(order, "b", "bottom")).toEqual(["a", "c", "d", "b"]);
+    expect(moveInFolderOrder(order, "a", "up")).toBe(order);
+    expect(moveInFolderOrder(order, "x", "down")).toBe(order);
   });
 });

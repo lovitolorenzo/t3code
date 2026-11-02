@@ -49,6 +49,8 @@ export interface SidebarFolderState {
   readonly dismissedSuggestionByThreadKey: Readonly<Record<string, string>>;
   /** Folder groups the user closed in the thread list. */
   readonly collapsedFolderIds: ReadonlyArray<string>;
+  /** The order the user dragged each folder's threads into, by thread key. */
+  readonly threadOrderByFolder: Readonly<Record<string, ReadonlyArray<string>>>;
 }
 
 export const EMPTY_SIDEBAR_FOLDER_STATE: SidebarFolderState = {
@@ -58,6 +60,7 @@ export const EMPTY_SIDEBAR_FOLDER_STATE: SidebarFolderState = {
   folderChoiceByDraftId: {},
   dismissedSuggestionByThreadKey: {},
   collapsedFolderIds: [],
+  threadOrderByFolder: {},
 };
 
 export function normalizeFolderName(name: string): string | null {
@@ -125,6 +128,9 @@ export function deleteFolder(state: SidebarFolderState, folderId: string): Sideb
       Object.entries(state.dismissedSuggestionByThreadKey).filter(([, id]) => id !== folderId),
     ),
     collapsedFolderIds: state.collapsedFolderIds.filter((id) => id !== folderId),
+    threadOrderByFolder: Object.fromEntries(
+      Object.entries(state.threadOrderByFolder).filter(([id]) => id !== folderId),
+    ),
   };
 }
 
@@ -177,6 +183,40 @@ export function toggleFolderCollapsed(
   };
 }
 
+export function setFolderThreadOrder(
+  state: SidebarFolderState,
+  folderId: string,
+  threadKeys: ReadonlyArray<string>,
+): SidebarFolderState {
+  if (!state.folders.some((candidate) => candidate.id === folderId)) return state;
+  const current = state.threadOrderByFolder[folderId] ?? [];
+  if (current.length === threadKeys.length && current.every((key, i) => key === threadKeys[i])) {
+    return state;
+  }
+  return {
+    ...state,
+    threadOrderByFolder: { ...state.threadOrderByFolder, [folderId]: [...threadKeys] },
+  };
+}
+
+export type FolderPositionMove = "top" | "up" | "down" | "bottom";
+
+/** The folder's row order after moving one row; unchanged when it cannot move. */
+export function moveInFolderOrder(
+  order: ReadonlyArray<string>,
+  threadKey: string,
+  move: FolderPositionMove,
+): ReadonlyArray<string> {
+  const index = order.indexOf(threadKey);
+  if (index === -1) return order;
+  const target =
+    move === "top" ? 0 : move === "bottom" ? order.length - 1 : index + (move === "up" ? -1 : 1);
+  if (target < 0 || target >= order.length || target === index) return order;
+  const next = order.filter((key) => key !== threadKey);
+  next.splice(target, 0, threadKey);
+  return next;
+}
+
 export interface FolderThreadGroup<T> {
   readonly folder: SidebarFolder;
   readonly threads: ReadonlyArray<T>;
@@ -184,13 +224,16 @@ export interface FolderThreadGroup<T> {
 
 /**
  * Splits a list into unfiled threads and one group per folder, in folder
- * order. Each part keeps the list's own order; empty folders get no group.
+ * order; empty folders get no group. Unfiled threads keep the list's order.
+ * In a group, threads the user never placed come first in list order, then
+ * the placed ones in the order the user dragged them into.
  */
 export function groupThreadsByFolder<T>(
   threads: ReadonlyArray<T>,
   keyOf: (thread: T) => string,
   folders: ReadonlyArray<SidebarFolder>,
   folderIdByThreadKey: Readonly<Record<string, string>>,
+  threadOrderByFolder: Readonly<Record<string, ReadonlyArray<string>>> = {},
 ): { readonly unfiled: ReadonlyArray<T>; readonly groups: ReadonlyArray<FolderThreadGroup<T>> } {
   const unfiled: T[] = [];
   const byFolder = new Map<string, T[]>(folders.map((folder) => [folder.id, []]));
@@ -203,7 +246,13 @@ export function groupThreadsByFolder<T>(
     unfiled,
     groups: folders.flatMap((folder) => {
       const grouped = byFolder.get(folder.id) ?? [];
-      return grouped.length === 0 ? [] : [{ folder, threads: grouped }];
+      if (grouped.length === 0) return [];
+      const rank = new Map((threadOrderByFolder[folder.id] ?? []).map((key, i) => [key, i]));
+      const unplaced = grouped.filter((thread) => !rank.has(keyOf(thread)));
+      const placed = grouped
+        .filter((thread) => rank.has(keyOf(thread)))
+        .toSorted((a, b) => rank.get(keyOf(a))! - rank.get(keyOf(b))!);
+      return [{ folder, threads: [...unplaced, ...placed] }];
     }),
   };
 }
@@ -344,6 +393,16 @@ export function parseSidebarFolderState(value: unknown): SidebarFolderState {
           typeof id === "string" && seen.has(id) && all.indexOf(id) === index,
       )
     : [];
+  const threadOrderByFolder: Record<string, ReadonlyArray<string>> = {};
+  if (raw.threadOrderByFolder && typeof raw.threadOrderByFolder === "object") {
+    for (const [folderId, keys] of Object.entries(raw.threadOrderByFolder)) {
+      if (seen.has(folderId) && Array.isArray(keys)) {
+        threadOrderByFolder[folderId] = keys.filter(
+          (key): key is string => typeof key === "string",
+        );
+      }
+    }
+  }
   return {
     folders,
     folderIdByThreadKey,
@@ -351,5 +410,6 @@ export function parseSidebarFolderState(value: unknown): SidebarFolderState {
     folderChoiceByDraftId,
     dismissedSuggestionByThreadKey,
     collapsedFolderIds,
+    threadOrderByFolder,
   };
 }

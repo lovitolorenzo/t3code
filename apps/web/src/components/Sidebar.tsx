@@ -179,6 +179,7 @@ import {
   buildDraftActionMenuItems,
   buildFolderMenuItem,
   buildThreadActionMenuItems,
+  parseFolderPositionAction,
   threadActionRequiresOperate,
 } from "./threadActionMenu.logic";
 import {
@@ -267,6 +268,7 @@ import {
   SIDEBAR_FOLDER_COLORS,
   countThreadsByFolder,
   groupThreadsByFolder,
+  moveInFolderOrder,
   sharedFolderId,
   type SidebarFolder,
 } from "../sidebarFolders.logic";
@@ -451,6 +453,7 @@ function useSidebarThreads(input: {
     readonly folders: ReadonlyArray<SidebarFolder>;
     readonly folderIdByThreadKey: Readonly<Record<string, string>>;
     readonly collapsedFolderIds: ReadonlyArray<string>;
+    readonly threadOrderByFolder: Readonly<Record<string, ReadonlyArray<string>>>;
   };
 }) {
   const {
@@ -589,6 +592,7 @@ function useSidebarThreads(input: {
     threadShellKey,
     folderGroups === null ? sidebarFolderGrouping.folders : [],
     sidebarFolderGrouping.folderIdByThreadKey,
+    sidebarFolderGrouping.threadOrderByFolder,
   );
   // A closed folder still lists the open thread, as a closed shelf does.
   const activeFolderGroups = activeByFolder.groups.map((group) => {
@@ -1133,6 +1137,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
 
   const sidebarFolders = useSidebarFolderStore((store) => store.folders);
   const collapsedFolderIds = useSidebarFolderStore((store) => store.collapsedFolderIds);
+  const threadOrderByFolder = useSidebarFolderStore((store) => store.threadOrderByFolder);
   const folderIdByThreadKey = useSidebarFolderStore((store) => store.folderIdByThreadKey);
   const activeFolderId = useSidebarFolderStore((store) => store.activeFolderId);
   const setActiveFolder = useSidebarFolderStore((store) => store.setActiveFolder);
@@ -1493,7 +1498,12 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
     keepEmptyFolders: (group) =>
       scopedFolder === null &&
       (scopedProjectGroups.length > 0 || (group.pinned && !group.archived)),
-    sidebarFolderGrouping: { folders: sidebarFolders, folderIdByThreadKey, collapsedFolderIds },
+    sidebarFolderGrouping: {
+      folders: sidebarFolders,
+      folderIdByThreadKey,
+      collapsedFolderIds,
+      threadOrderByFolder,
+    },
   });
   const dismissedSuggestionByThreadKey = useSidebarFolderStore(
     (store) => store.dismissedSuggestionByThreadKey,
@@ -2775,6 +2785,14 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
           timestampFormat,
           thread.environmentId,
         );
+        // Only an active row in a folder group has a position to change.
+        const folderGroup =
+          sectionByThreadKey.get(threadKey) === "active"
+            ? (activeFolderGroups.find((group) =>
+                group.threads.some((candidate) => threadShellKey(candidate) === threadKey),
+              ) ?? null)
+            : null;
+        const folderOrder = folderGroup ? folderGroup.threads.map(threadShellKey) : [];
         const threadProjectGroup =
           projectGroupsRef.current.find((project) =>
             project.memberProjectRefs.some(
@@ -2822,12 +2840,32 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                 items: useSidebarFolderStore.getState().folders,
                 currentId: useSidebarFolderStore.getState().folderIdByThreadKey[threadKey] ?? null,
               },
+              ...(folderOrder.length > 1
+                ? {
+                    folderPosition: {
+                      canMoveUp: folderOrder.indexOf(threadKey) > 0,
+                      canMoveDown: folderOrder.indexOf(threadKey) < folderOrder.length - 1,
+                    },
+                  }
+                : {}),
             }),
             position,
           ),
         );
         if (clicked._tag === "Failure" || clicked.value === null) return;
         if (await applyFolderMenuAction(clicked.value, [threadKey])) return;
+        const positionMove = parseFolderPositionAction(clicked.value);
+        if (positionMove !== null) {
+          if (folderGroup) {
+            useSidebarFolderStore
+              .getState()
+              .setFolderOrder(
+                folderGroup.folder.id,
+                moveInFolderOrder(folderOrder, threadKey, positionMove),
+              );
+          }
+          return;
+        }
         if (threadActionRequiresOperate(clicked.value) && !checkThreadOperations([thread])) return;
         if (clicked.value?.startsWith("snooze:")) {
           const preset =
@@ -3611,7 +3649,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                                 renamingThreadKey === threadKey ||
                                 !draggableThreadKeys.has(threadKey) ||
                                 optimisticDrop !== null ||
-                                // A sidebar folder decides where its active threads sit.
+                                // A folder decides where its active threads sit; its menu moves them.
                                 (section === "active" && threadKey in folderIdByThreadKey)
                               }
                               thread={thread}
