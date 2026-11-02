@@ -98,6 +98,7 @@ describe("sidebar folders", () => {
       folderIdByThreadKey: { "env:a": "ci" },
       activeFolderId: null,
       folderChoiceByDraftId: {},
+      dismissedSuggestionByThreadKey: {},
     });
     expect(parseSidebarFolderState("garbage")).toEqual(EMPTY_SIDEBAR_FOLDER_STATE);
   });

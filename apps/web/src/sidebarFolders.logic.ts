@@ -45,6 +45,8 @@ export interface SidebarFolderState {
   readonly activeFolderId: string | null;
   /** Choices made in a new-thread draft, applied when the draft becomes a thread. */
   readonly folderChoiceByDraftId: Readonly<Record<string, DraftFolderChoice>>;
+  /** Folder suggestions the user dismissed, so the same one does not return. */
+  readonly dismissedSuggestionByThreadKey: Readonly<Record<string, string>>;
 }
 
 export const EMPTY_SIDEBAR_FOLDER_STATE: SidebarFolderState = {
@@ -52,6 +54,7 @@ export const EMPTY_SIDEBAR_FOLDER_STATE: SidebarFolderState = {
   folderIdByThreadKey: {},
   activeFolderId: null,
   folderChoiceByDraftId: {},
+  dismissedSuggestionByThreadKey: {},
 };
 
 export function normalizeFolderName(name: string): string | null {
@@ -115,6 +118,9 @@ export function deleteFolder(state: SidebarFolderState, folderId: string): Sideb
     folderChoiceByDraftId: Object.fromEntries(
       Object.entries(state.folderChoiceByDraftId).filter(([, id]) => id !== folderId),
     ),
+    dismissedSuggestionByThreadKey: Object.fromEntries(
+      Object.entries(state.dismissedSuggestionByThreadKey).filter(([, id]) => id !== folderId),
+    ),
   };
 }
 
@@ -152,6 +158,21 @@ export function setActiveFolder(
       ? folderId
       : null;
   return state.activeFolderId === next ? state : { ...state, activeFolderId: next };
+}
+
+export function dismissSuggestion(
+  state: SidebarFolderState,
+  threadKey: string,
+  folderId: string,
+): SidebarFolderState {
+  if (state.dismissedSuggestionByThreadKey[threadKey] === folderId) return state;
+  return {
+    ...state,
+    dismissedSuggestionByThreadKey: {
+      ...state.dismissedSuggestionByThreadKey,
+      [threadKey]: folderId,
+    },
+  };
 }
 
 export function setDraftFolderChoice(
@@ -258,5 +279,22 @@ export function parseSidebarFolderState(value: unknown): SidebarFolderState {
       }
     }
   }
-  return { folders, folderIdByThreadKey, activeFolderId, folderChoiceByDraftId };
+  const dismissedSuggestionByThreadKey: Record<string, string> = {};
+  if (
+    raw.dismissedSuggestionByThreadKey &&
+    typeof raw.dismissedSuggestionByThreadKey === "object"
+  ) {
+    for (const [threadKey, folderId] of Object.entries(raw.dismissedSuggestionByThreadKey)) {
+      if (typeof folderId === "string" && seen.has(folderId)) {
+        dismissedSuggestionByThreadKey[threadKey] = folderId;
+      }
+    }
+  }
+  return {
+    folders,
+    folderIdByThreadKey,
+    activeFolderId,
+    folderChoiceByDraftId,
+    dismissedSuggestionByThreadKey,
+  };
 }
