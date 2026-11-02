@@ -1,5 +1,6 @@
 import type { ContextMenuItem } from "@t3tools/contracts";
 import type { SnoozePreset } from "@t3tools/client-runtime/state/thread-settled";
+import type { SidebarFolder } from "../sidebarFolders.logic";
 
 export type ThreadActionMenuId =
   | "find"
@@ -20,6 +21,8 @@ export type ThreadActionMenuId =
   | "rename"
   | "regenerate-title"
   | "mark-unread"
+  | "folder"
+  | `folder:${string}`
   | "share-guest"
   | "copy"
   | "copy-path"
@@ -95,10 +98,61 @@ export interface ThreadActionMenuState {
   readonly canShareWithGuest?: boolean;
   /** A No project thread with its own folder, on a server that can promote it. */
   readonly canTurnIntoProject?: boolean;
+  /** Client-local folders; omitted where the surface does not offer them. */
+  readonly folders?: {
+    readonly items: ReadonlyArray<SidebarFolder>;
+    readonly currentId: string | null;
+  };
+}
+
+export type SidebarFolderMenuId = "folder" | `folder:${string}`;
+
+/** Folder ids are random hex, so they never collide with `new` or `none`. */
+export function parseFolderMenuAction(
+  action: string,
+): { readonly kind: "new" } | { readonly kind: "move"; readonly folderId: string | null } | null {
+  if (!action.startsWith("folder:")) return null;
+  const target = action.slice("folder:".length);
+  if (target === "new") return { kind: "new" };
+  return { kind: "move", folderId: target === "none" ? null : target };
+}
+
+export function buildFolderMenuItem(input: {
+  readonly folders: ReadonlyArray<SidebarFolder>;
+  readonly currentId: string | null;
+  readonly label?: string;
+}): ContextMenuItem<SidebarFolderMenuId> {
+  return {
+    id: "folder",
+    label: input.label ?? "Move to folder",
+    icon: "folder",
+    children: [
+      ...input.folders.map((folder) => ({
+        id: `folder:${folder.id}` as const,
+        label: folder.name,
+        checked: folder.id === input.currentId,
+      })),
+      ...(input.currentId !== null
+        ? [
+            {
+              id: "folder:none" as const,
+              label: "Remove from folder",
+              separatorBefore: input.folders.length > 0,
+            },
+          ]
+        : []),
+      {
+        id: "folder:new" as const,
+        label: "New folder…",
+        separatorBefore: input.folders.length > 0 || input.currentId !== null,
+      },
+    ],
+  };
 }
 
 /** Local navigation, read markers, and copying remain available to read-only clients. */
 export function threadActionRequiresOperate(action: ThreadActionMenuId): boolean {
+  if (action === "folder" || action.startsWith("folder:")) return false;
   return ![
     "find",
     "new-thread-on-branch",
@@ -178,6 +232,9 @@ export function buildThreadActionMenuItems(
         ]
       : []),
     { id: "mark-unread", label: "Mark unread", icon: "mail-open" },
+    ...(state.folders
+      ? [buildFolderMenuItem({ folders: state.folders.items, currentId: state.folders.currentId })]
+      : []),
     ...(state.canShareWithGuest
       ? [{ id: "share-guest" as const, label: "Share with guest", icon: "user-plus" }]
       : []),
