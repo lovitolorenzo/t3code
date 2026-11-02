@@ -14,7 +14,9 @@ import {
   parseSidebarFolderState,
   renameFolder,
   setActiveFolder,
+  setDraftFolderChoice,
   setFolderColor,
+  settlePromotedDraft,
   type SidebarFolderColor,
   type SidebarFolderState,
 } from "./sidebarFolders.logic";
@@ -40,6 +42,7 @@ function persistFolders(state: SidebarFolderState): void {
         folders: state.folders,
         folderIdByThreadKey: state.folderIdByThreadKey,
         activeFolderId: state.activeFolderId,
+        folderChoiceByDraftId: state.folderChoiceByDraftId,
       } satisfies SidebarFolderState),
     );
   } catch {}
@@ -52,6 +55,10 @@ interface SidebarFolderStore extends SidebarFolderState {
   readonly deleteFolder: (folderId: string) => void;
   readonly moveThreads: (threadKeys: ReadonlyArray<string>, folderId: string | null) => void;
   readonly setActiveFolder: (folderId: string | null) => void;
+  /** `folderId` null records an explicit "no folder" for the draft. */
+  readonly setDraftFolder: (draftId: string, folderId: string | null) => void;
+  readonly settlePromotedDraft: (draftId: string, threadKey: string) => void;
+  readonly forgetDraft: (draftId: string) => void;
 }
 
 function pickState(store: SidebarFolderStore): SidebarFolderState {
@@ -59,6 +66,7 @@ function pickState(store: SidebarFolderStore): SidebarFolderState {
     folders: store.folders,
     folderIdByThreadKey: store.folderIdByThreadKey,
     activeFolderId: store.activeFolderId,
+    folderChoiceByDraftId: store.folderChoiceByDraftId,
   };
 }
 
@@ -86,6 +94,16 @@ export const useSidebarFolderStore = create<SidebarFolderStore>()((set, get) => 
     moveThreads: (threadKeys, folderId) =>
       apply((state) => moveThreadsToFolder(state, threadKeys, folderId)),
     setActiveFolder: (folderId) => apply((state) => setActiveFolder(state, folderId)),
+    setDraftFolder: (draftId, folderId) =>
+      apply((state) => setDraftFolderChoice(state, draftId, folderId)),
+    settlePromotedDraft: (draftId, threadKey) =>
+      apply((state) => settlePromotedDraft(state, draftId, threadKey)),
+    forgetDraft: (draftId) =>
+      apply((state) => {
+        if (!(draftId in state.folderChoiceByDraftId)) return state;
+        const { [draftId]: _forgotten, ...folderChoiceByDraftId } = state.folderChoiceByDraftId;
+        return { ...state, folderChoiceByDraftId };
+      }),
   };
 });
 
