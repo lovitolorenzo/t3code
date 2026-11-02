@@ -47,6 +47,8 @@ export interface SidebarFolderState {
   readonly folderChoiceByDraftId: Readonly<Record<string, DraftFolderChoice>>;
   /** Folder suggestions the user dismissed, so the same one does not return. */
   readonly dismissedSuggestionByThreadKey: Readonly<Record<string, string>>;
+  /** Folder groups the user closed in the thread list. */
+  readonly collapsedFolderIds: ReadonlyArray<string>;
 }
 
 export const EMPTY_SIDEBAR_FOLDER_STATE: SidebarFolderState = {
@@ -55,6 +57,7 @@ export const EMPTY_SIDEBAR_FOLDER_STATE: SidebarFolderState = {
   activeFolderId: null,
   folderChoiceByDraftId: {},
   dismissedSuggestionByThreadKey: {},
+  collapsedFolderIds: [],
 };
 
 export function normalizeFolderName(name: string): string | null {
@@ -121,6 +124,7 @@ export function deleteFolder(state: SidebarFolderState, folderId: string): Sideb
     dismissedSuggestionByThreadKey: Object.fromEntries(
       Object.entries(state.dismissedSuggestionByThreadKey).filter(([, id]) => id !== folderId),
     ),
+    collapsedFolderIds: state.collapsedFolderIds.filter((id) => id !== folderId),
   };
 }
 
@@ -158,6 +162,50 @@ export function setActiveFolder(
       ? folderId
       : null;
   return state.activeFolderId === next ? state : { ...state, activeFolderId: next };
+}
+
+export function toggleFolderCollapsed(
+  state: SidebarFolderState,
+  folderId: string,
+): SidebarFolderState {
+  if (!state.folders.some((candidate) => candidate.id === folderId)) return state;
+  return {
+    ...state,
+    collapsedFolderIds: state.collapsedFolderIds.includes(folderId)
+      ? state.collapsedFolderIds.filter((id) => id !== folderId)
+      : [...state.collapsedFolderIds, folderId],
+  };
+}
+
+export interface FolderThreadGroup<T> {
+  readonly folder: SidebarFolder;
+  readonly threads: ReadonlyArray<T>;
+}
+
+/**
+ * Splits a list into unfiled threads and one group per folder, in folder
+ * order. Each part keeps the list's own order; empty folders get no group.
+ */
+export function groupThreadsByFolder<T>(
+  threads: ReadonlyArray<T>,
+  keyOf: (thread: T) => string,
+  folders: ReadonlyArray<SidebarFolder>,
+  folderIdByThreadKey: Readonly<Record<string, string>>,
+): { readonly unfiled: ReadonlyArray<T>; readonly groups: ReadonlyArray<FolderThreadGroup<T>> } {
+  const unfiled: T[] = [];
+  const byFolder = new Map<string, T[]>(folders.map((folder) => [folder.id, []]));
+  for (const thread of threads) {
+    const bucket = byFolder.get(folderIdByThreadKey[keyOf(thread)] ?? "");
+    if (bucket) bucket.push(thread);
+    else unfiled.push(thread);
+  }
+  return {
+    unfiled,
+    groups: folders.flatMap((folder) => {
+      const grouped = byFolder.get(folder.id) ?? [];
+      return grouped.length === 0 ? [] : [{ folder, threads: grouped }];
+    }),
+  };
 }
 
 export function dismissSuggestion(
@@ -290,11 +338,18 @@ export function parseSidebarFolderState(value: unknown): SidebarFolderState {
       }
     }
   }
+  const collapsedFolderIds = Array.isArray(raw.collapsedFolderIds)
+    ? raw.collapsedFolderIds.filter(
+        (id, index, all): id is string =>
+          typeof id === "string" && seen.has(id) && all.indexOf(id) === index,
+      )
+    : [];
   return {
     folders,
     folderIdByThreadKey,
     activeFolderId,
     folderChoiceByDraftId,
     dismissedSuggestionByThreadKey,
+    collapsedFolderIds,
   };
 }

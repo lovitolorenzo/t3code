@@ -10,6 +10,8 @@ import {
   renameFolder,
   setActiveFolder,
   setFolderColor,
+  groupThreadsByFolder,
+  toggleFolderCollapsed,
   resolveDraftFolderId,
   setDraftFolderChoice,
   settlePromotedDraft,
@@ -99,6 +101,7 @@ describe("sidebar folders", () => {
       activeFolderId: null,
       folderChoiceByDraftId: {},
       dismissedSuggestionByThreadKey: {},
+      collapsedFolderIds: [],
     });
     expect(parseSidebarFolderState("garbage")).toEqual(EMPTY_SIDEBAR_FOLDER_STATE);
   });
@@ -126,5 +129,31 @@ describe("sidebar folders", () => {
     expect(settlePromotedDraft(chosen, "draft-1", "env:t1").folderIdByThreadKey).toEqual({
       "env:t1": "ci",
     });
+  });
+
+  it("groups threads by folder in folder order and keeps unfiled ones apart", () => {
+    const state = moveThreadsToFolder(
+      moveThreadsToFolder(withFolders, ["b", "d"], "docs"),
+      ["c"],
+      "ci",
+    );
+    const { unfiled, groups } = groupThreadsByFolder(
+      ["a", "b", "c", "d", "e"],
+      (key) => key,
+      state.folders,
+      state.folderIdByThreadKey,
+    );
+    expect(unfiled).toEqual(["a", "e"]);
+    expect(groups.map((group) => [group.folder.id, group.threads])).toEqual([
+      ["ci", ["c"]],
+      ["docs", ["b", "d"]],
+    ]);
+  });
+
+  it("toggles a folder group closed and open, and forgets it with the folder", () => {
+    const closed = toggleFolderCollapsed(withFolders, "ci");
+    expect(closed.collapsedFolderIds).toEqual(["ci"]);
+    expect(toggleFolderCollapsed(closed, "ci").collapsedFolderIds).toEqual([]);
+    expect(deleteFolder(closed, "ci").collapsedFolderIds).toEqual([]);
   });
 });

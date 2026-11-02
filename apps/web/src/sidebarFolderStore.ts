@@ -18,6 +18,7 @@ import {
   setDraftFolderChoice,
   setFolderColor,
   settlePromotedDraft,
+  toggleFolderCollapsed,
   type SidebarFolderColor,
   type SidebarFolderState,
 } from "./sidebarFolders.logic";
@@ -45,6 +46,7 @@ function persistFolders(state: SidebarFolderState): void {
         activeFolderId: state.activeFolderId,
         folderChoiceByDraftId: state.folderChoiceByDraftId,
         dismissedSuggestionByThreadKey: state.dismissedSuggestionByThreadKey,
+        collapsedFolderIds: state.collapsedFolderIds,
       } satisfies SidebarFolderState),
     );
   } catch {}
@@ -62,6 +64,7 @@ interface SidebarFolderStore extends SidebarFolderState {
   readonly settlePromotedDraft: (draftId: string, threadKey: string) => void;
   readonly forgetDraft: (draftId: string) => void;
   readonly dismissSuggestion: (threadKey: string, folderId: string) => void;
+  readonly toggleFolderCollapsed: (folderId: string) => void;
 }
 
 function pickState(store: SidebarFolderStore): SidebarFolderState {
@@ -71,6 +74,7 @@ function pickState(store: SidebarFolderStore): SidebarFolderState {
     activeFolderId: store.activeFolderId,
     folderChoiceByDraftId: store.folderChoiceByDraftId,
     dismissedSuggestionByThreadKey: store.dismissedSuggestionByThreadKey,
+    collapsedFolderIds: store.collapsedFolderIds,
   };
 }
 
@@ -104,6 +108,7 @@ export const useSidebarFolderStore = create<SidebarFolderStore>()((set, get) => 
       apply((state) => settlePromotedDraft(state, draftId, threadKey)),
     dismissSuggestion: (threadKey, folderId) =>
       apply((state) => dismissSuggestion(state, threadKey, folderId)),
+    toggleFolderCollapsed: (folderId) => apply((state) => toggleFolderCollapsed(state, folderId)),
     forgetDraft: (draftId) =>
       apply((state) => {
         if (!(draftId in state.folderChoiceByDraftId)) return state;
