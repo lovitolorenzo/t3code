@@ -595,6 +595,7 @@ function useSidebarThreads(input: {
     const expanded = !sidebarFolderGrouping.collapsedFolderIds.includes(group.folder.id);
     return {
       folder: group.folder,
+      threads: group.threads,
       count: group.threads.length,
       expanded,
       visibleThreads: expanded ? group.threads : routeThreadOnly(group.threads, routeRowThreadKey),
@@ -3117,6 +3118,32 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
   );
   const showJumpHints = useThreadJumpHintsVisible(shouldShowJumpHintsNow);
 
+  // Starts in the project of the folder's first listed thread, so the new thread
+  // lands next to the work it belongs with; the draft is filed in the folder.
+  const handleNewThreadInFolder = useStableCallback(
+    async (folderId: string, folderThreads: readonly EnvironmentThreadShell[]) => {
+      const anchor = folderThreads[0];
+      if (!anchor) return;
+      if (isMobile) setOpenMobile(false);
+      const result = await settlePromise(() =>
+        handleNewThread(scopeProjectRef(anchor.environmentId, anchor.projectId)),
+      );
+      if (result._tag === "Failure") {
+        const error = squashAtomCommandFailure(result);
+        toastManager.add(
+          stackedThreadToast({
+            type: "error",
+            title: "Could not create thread",
+            description: error instanceof Error ? error.message : "An error occurred.",
+          }),
+        );
+        return;
+      }
+      if (result.value) {
+        useSidebarFolderStore.getState().setDraftFolder(result.value.draftId, folderId);
+      }
+    },
+  );
   const handleNewThreadClick = (event?: ReactMouseEvent) => {
     if (
       boringSidebarEnabled ||
@@ -3717,6 +3744,9 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                                     useSidebarFolderStore
                                       .getState()
                                       .toggleFolderCollapsed(group.folder.id)
+                                  }
+                                  onNewThread={() =>
+                                    void handleNewThreadInFolder(group.folder.id, group.threads)
                                   }
                                 />,
                               );

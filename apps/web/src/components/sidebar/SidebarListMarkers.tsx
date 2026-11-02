@@ -1,4 +1,4 @@
-import { FolderClosedIcon } from "lucide-react";
+import { FolderClosedIcon, PlusIcon } from "lucide-react";
 import { CollapsibleSectionHeader } from "../ui/collapsible-section-header";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
@@ -154,12 +154,13 @@ export function SidebarFolderGroupHeader(props: {
   count: number;
   expanded: boolean;
   onToggle: () => void;
+  onNewThread: () => void;
 }) {
   return (
     <SortableSidebarMarker
       marker={`folder-header:${props.folderId}`}
       data-testid="sidebar-folder-group-header"
-      className="relative mx-0.5 h-8"
+      className="group/folder-header relative mx-0.5 h-8"
     >
       <CollapsibleSectionHeader
         role="treeitem"
@@ -170,7 +171,7 @@ export function SidebarFolderGroupHeader(props: {
         tone="emphasized"
         accessory={<span className="font-normal tabular-nums">{props.count}</span>}
       >
-        <span className="inline-flex max-w-48 items-center gap-1.5">
+        <span className="inline-flex max-w-44 items-center gap-1.5">
           <FolderClosedIcon
             aria-hidden
             className="size-3.5 shrink-0"
@@ -179,6 +180,15 @@ export function SidebarFolderGroupHeader(props: {
           <span className="truncate">{props.name}</span>
         </span>
       </CollapsibleSectionHeader>
+      {/* A sibling of the toggle, since a button cannot hold another button. */}
+      <button
+        type="button"
+        aria-label={`New thread in folder ${props.name}`}
+        onClick={props.onNewThread}
+        className="absolute inset-y-1 right-10 inline-flex w-6 cursor-pointer items-center justify-center rounded-md bg-sidebar text-sidebar-muted-foreground opacity-0 outline-none transition-opacity hover:text-sidebar-foreground focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring group-any-hover/folder-header:opacity-100"
+      >
+        <PlusIcon aria-hidden className="size-3.5" />
+      </button>
     </SortableSidebarMarker>
   );
 }
