@@ -1,6 +1,7 @@
 import { CollapsibleSectionHeader } from "../ui/collapsible-section-header";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
+import { FolderClosedIcon } from "lucide-react";
 import { type ReactNode } from "react";
 import { cn } from "~/lib/utils";
 import { useClientSettings } from "../../hooks/useSettings";
@@ -144,6 +145,40 @@ export function SidebarSectionHeader(props: {
       >
         {props.label}
         {!redesign && collapsedCount !== null ? ` (${collapsedCount})` : null}
+      </CollapsibleSectionHeader>
+    </SortableSidebarMarker>
+  );
+}
+
+/** The header of an active folder group; it opens and closes the group like a shelf. */
+export function SidebarFolderGroupHeader(props: {
+  folderId: string;
+  name: string;
+  color: string;
+  count: number;
+  expanded: boolean;
+  onToggle: () => void;
+}) {
+  return (
+    <SortableSidebarMarker
+      marker={`folder-header:${props.folderId}`}
+      data-testid="sidebar-folder-group-header"
+      className="relative mx-0.5 h-8"
+    >
+      <CollapsibleSectionHeader
+        onClick={props.onToggle}
+        expanded={props.expanded}
+        tone="emphasized"
+        accessory={<span className="font-normal tabular-nums">{props.count}</span>}
+      >
+        <span className="inline-flex max-w-48 items-center gap-1.5">
+          <FolderClosedIcon
+            aria-hidden
+            className="size-3.5 shrink-0"
+            style={{ color: props.color }}
+          />
+          <span className="truncate">{props.name}</span>
+        </span>
       </CollapsibleSectionHeader>
     </SortableSidebarMarker>
   );

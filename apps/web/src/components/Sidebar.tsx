@@ -236,7 +236,9 @@ import {
 import {
   SIDEBAR_FOLDER_COLORS,
   countThreadsByFolder,
+  groupThreadsByFolder,
   sharedFolderId,
+  type SidebarFolder,
 } from "../sidebarFolders.logic";
 import { requestFolderDetails } from "../sidebarFolderNameRequest";
 import { suggestFolders } from "../sidebarFolderSuggest.logic";
@@ -256,6 +258,7 @@ import {
 import { SidebarDraftBlock } from "./sidebar/SidebarDraftBlock";
 import {
   SidebarDragBoundary,
+  SidebarFolderGroupHeader,
   SidebarSectionHeader,
   SidebarSectionPlaceholder,
 } from "./sidebar/SidebarListMarkers";
@@ -396,6 +399,12 @@ function useSidebarThreads(input: {
   readonly optimisticDrop: SidebarOptimisticDrop | null;
   readonly threads: readonly EnvironmentThreadShell[];
   readonly routeRowThreadKey: string | null;
+  /** Active threads in a folder sit together under that folder's header. */
+  readonly folderGrouping: {
+    readonly folders: ReadonlyArray<SidebarFolder>;
+    readonly folderIdByThreadKey: Readonly<Record<string, string>>;
+    readonly collapsedFolderIds: ReadonlyArray<string>;
+  };
 }) {
   const {
     projectScopeKey,
@@ -404,6 +413,7 @@ function useSidebarThreads(input: {
     optimisticDrop,
     threads,
     routeRowThreadKey,
+    folderGrouping,
   } = input;
   const workingShelfEnabled = useClientSettings((s) => s.sidebarWorkingShelfEnabled);
   const inboxReturnsVersion = useSyncExternalStore(
@@ -481,9 +491,26 @@ function useSidebarThreads(input: {
   const visibleWorkingThreads = workingShelfExpanded
     ? workingThreads
     : routeThreadOnly(workingThreads, routeRowThreadKey);
+  const activeByFolder = groupThreadsByFolder(
+    activeThreads,
+    threadShellKey,
+    folderGrouping.folders,
+    folderGrouping.folderIdByThreadKey,
+  );
+  // A closed folder still lists the open thread, as a closed shelf does.
+  const activeFolderGroups = activeByFolder.groups.map((group) => {
+    const expanded = !folderGrouping.collapsedFolderIds.includes(group.folder.id);
+    return {
+      folder: group.folder,
+      count: group.threads.length,
+      expanded,
+      visibleThreads: expanded ? group.threads : routeThreadOnly(group.threads, routeRowThreadKey),
+    };
+  });
   const orderedThreads = [
     ...pinnedThreads,
-    ...activeThreads,
+    ...activeByFolder.unfiled,
+    ...activeFolderGroups.flatMap((group) => group.visibleThreads),
     ...visibleWorkingThreads,
     ...visibleSnoozedThreads,
     ...renderedSettledThreads,
@@ -527,6 +554,8 @@ function useSidebarThreads(input: {
     renderedSettledThreads,
     visibleSnoozedThreads,
     visibleWorkingThreads,
+    unfiledActiveThreads: activeByFolder.unfiled,
+    activeFolderGroups,
     orderedThreadKeys: orderedThreads.map(threadShellKey),
     threadByKey: new Map(orderedThreads.map((thread) => [threadShellKey(thread), thread] as const)),
     settledThreadKeys: new Set(settledThreads.map(threadShellKey)),
@@ -971,6 +1000,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
   const routeThreadKey = routeThreadRef ? scopedThreadKey(routeThreadRef) : null;
 
   const sidebarFolders = useSidebarFolderStore((store) => store.folders);
+  const collapsedFolderIds = useSidebarFolderStore((store) => store.collapsedFolderIds);
   const folderIdByThreadKey = useSidebarFolderStore((store) => store.folderIdByThreadKey);
   const activeFolderId = useSidebarFolderStore((store) => store.activeFolderId);
   const setActiveFolder = useSidebarFolderStore((store) => store.setActiveFolder);
@@ -1225,6 +1255,8 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
     renderedSettledThreads,
     visibleSnoozedThreads,
     visibleWorkingThreads,
+    unfiledActiveThreads,
+    activeFolderGroups,
     orderedThreadKeys,
     threadByKey,
     settledThreadKeys,
@@ -1241,6 +1273,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
     optimisticDrop,
     threads: folderScopedThreads,
     routeRowThreadKey,
+    folderGrouping: { folders: sidebarFolders, folderIdByThreadKey, collapsedFolderIds },
   });
   const dismissedSuggestionByThreadKey = useSidebarFolderStore(
     (store) => store.dismissedSuggestionByThreadKey,
@@ -1828,9 +1861,12 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
     const pinnedRows = rowsOf(pinnedThreads, "pinned");
     items.push(...pinnedRows);
     items.push({ kind: "marker", marker: "pinned-divider" });
-    const activeRows = rowsOf(activeThreads, "active");
     items.push({ kind: "marker", marker: "active-placeholder" });
-    items.push(...activeRows);
+    items.push(...rowsOf(unfiledActiveThreads, "active"));
+    for (const group of activeFolderGroups) {
+      items.push({ kind: "marker", marker: `folder-header:${group.folder.id}` });
+      items.push(...rowsOf(group.visibleThreads, "active"));
+    }
     if (workingThreads.length > 0) {
       items.push({ kind: "marker", marker: "working-header" });
       items.push(...rowsOf(visibleWorkingThreads, "working"));
@@ -3170,7 +3206,9 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                               sortableDisabled={
                                 renamingThreadKey === threadKey ||
                                 !draggableThreadKeys.has(threadKey) ||
-                                optimisticDrop !== null
+                                optimisticDrop !== null ||
+                                // A folder decides where its active threads sit.
+                                (section === "active" && threadKey in folderIdByThreadKey)
                               }
                               thread={thread}
                               variant={rowVariant}
@@ -3282,6 +3320,29 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                         for (const item of sidebarListItems) {
                           if (item.kind === "thread") {
                             items.push(renderThreadRow(threadByKey.get(item.key)!, item.section));
+                            continue;
+                          }
+                          if (item.marker.startsWith("folder-header:")) {
+                            const group = activeFolderGroups.find(
+                              (candidate) => `folder-header:${candidate.folder.id}` === item.marker,
+                            );
+                            if (group) {
+                              items.push(
+                                <SidebarFolderGroupHeader
+                                  key={item.marker}
+                                  folderId={group.folder.id}
+                                  name={group.folder.name}
+                                  color={SIDEBAR_FOLDER_COLORS[group.folder.color]}
+                                  count={group.count}
+                                  expanded={group.expanded}
+                                  onToggle={() =>
+                                    useSidebarFolderStore
+                                      .getState()
+                                      .toggleFolderCollapsed(group.folder.id)
+                                  }
+                                />,
+                              );
+                            }
                             continue;
                           }
                           switch (item.marker) {
