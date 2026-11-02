@@ -39,6 +39,7 @@ import {
   CircleDotDashedIcon,
   ClockIcon,
   FolderClosedIcon,
+  FolderPlusIcon,
   GitBranchIcon,
   MessageCircleQuestionIcon,
   PinIcon,
@@ -65,6 +66,7 @@ import { useOpenPrLink } from "../../lib/openPullRequestLink";
 import { useUiStateStore } from "../../uiStateStore";
 import { useSidebarFolderStore } from "../../sidebarFolderStore";
 import { SIDEBAR_FOLDER_COLORS } from "../../sidebarFolders.logic";
+import { useFolderSuggestion } from "./folderSuggestionContext";
 import { useThreadSelectionStore } from "../../threadSelectionStore";
 import { useNowMinute } from "../../hooks/useNowMinute";
 import { useNowSecond } from "../../hooks/useNowSecond";
@@ -676,6 +678,25 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
       : (store.folders.find((candidate) => candidate.id === folderId) ?? null);
   });
   const folderColor = folder === null ? null : SIDEBAR_FOLDER_COLORS[folder.color];
+  const suggestedFolderId = useFolderSuggestion(threadKey);
+  const suggestedFolder = useSidebarFolderStore((store) =>
+    suggestedFolderId === null
+      ? null
+      : (store.folders.find((candidate) => candidate.id === suggestedFolderId) ?? null),
+  );
+  const handleAcceptSuggestion = (event: ReactMouseEvent) => {
+    event.preventDefault();
+    event.stopPropagation();
+    if (suggestedFolder)
+      useSidebarFolderStore.getState().moveThreads([threadKey], suggestedFolder.id);
+  };
+  const handleDismissSuggestion = (event: ReactMouseEvent) => {
+    event.preventDefault();
+    event.stopPropagation();
+    if (suggestedFolder) {
+      useSidebarFolderStore.getState().dismissSuggestion(threadKey, suggestedFolder.id);
+    }
+  };
   // The stripe marks the row's folder at a glance in every list and scope.
   const folderStripe =
     folderColor === null ? null : (
@@ -1466,6 +1487,30 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
               ) : (
                 <span className="flex-1" />
               )}
+              {folder === null && suggestedFolder !== null ? (
+                <span
+                  className="inline-flex max-w-[50%] min-w-0 shrink items-center rounded-sm border border-dashed border-current/50 text-xs opacity-80 hover:opacity-100"
+                  style={{ color: SIDEBAR_FOLDER_COLORS[suggestedFolder.color] }}
+                >
+                  <button
+                    type="button"
+                    aria-label={`Move to folder ${suggestedFolder.name}`}
+                    className="inline-flex min-w-0 cursor-pointer items-center gap-1 px-1 outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-ring"
+                    onClick={handleAcceptSuggestion}
+                  >
+                    <FolderPlusIcon aria-hidden className="size-3 shrink-0" />
+                    <span className="truncate">{suggestedFolder.name}?</span>
+                  </button>
+                  <button
+                    type="button"
+                    aria-label={`Dismiss folder suggestion ${suggestedFolder.name}`}
+                    className="inline-flex cursor-pointer items-center pe-0.5 outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-ring"
+                    onClick={handleDismissSuggestion}
+                  >
+                    <XIcon aria-hidden className="size-3" />
+                  </button>
+                </span>
+              ) : null}
               {folder !== null && folderColor !== null ? (
                 <span
                   className="inline-flex max-w-[45%] min-w-0 shrink items-center gap-1 text-xs"
