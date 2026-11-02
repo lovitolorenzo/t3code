@@ -10,6 +10,9 @@ import {
   renameFolder,
   setActiveFolder,
   setFolderColor,
+  resolveDraftFolderId,
+  setDraftFolderChoice,
+  settlePromotedDraft,
   sharedFolderId,
 } from "./sidebarFolders.logic";
 
@@ -94,7 +97,33 @@ describe("sidebar folders", () => {
       ],
       folderIdByThreadKey: { "env:a": "ci" },
       activeFolderId: null,
+      folderChoiceByDraftId: {},
     });
     expect(parseSidebarFolderState("garbage")).toEqual(EMPTY_SIDEBAR_FOLDER_STATE);
+  });
+
+  it("files a promoted draft under its chosen folder, or the scoped one", () => {
+    const chosen = setDraftFolderChoice(withFolders, "draft-1", "docs");
+    const promoted = settlePromotedDraft(chosen, "draft-1", "env:t1");
+    expect(promoted.folderIdByThreadKey).toEqual({ "env:t1": "docs" });
+    expect(promoted.folderChoiceByDraftId).toEqual({});
+
+    const scoped = setActiveFolder(withFolders, "ci");
+    expect(resolveDraftFolderId(scoped, "draft-2")).toBe("ci");
+    expect(settlePromotedDraft(scoped, "draft-2", "env:t2").folderIdByThreadKey).toEqual({
+      "env:t2": "ci",
+    });
+
+    const optedOut = setDraftFolderChoice(scoped, "draft-3", null);
+    expect(resolveDraftFolderId(optedOut, "draft-3")).toBeNull();
+    expect(settlePromotedDraft(optedOut, "draft-3", "env:t3").folderIdByThreadKey).toEqual({});
+  });
+
+  it("keeps a thread's existing folder when its draft is promoted again", () => {
+    const filed = moveThreadsToFolder(withFolders, ["env:t1"], "ci");
+    const chosen = setDraftFolderChoice(filed, "draft-1", "docs");
+    expect(settlePromotedDraft(chosen, "draft-1", "env:t1").folderIdByThreadKey).toEqual({
+      "env:t1": "ci",
+    });
   });
 });

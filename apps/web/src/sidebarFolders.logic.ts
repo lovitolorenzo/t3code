@@ -35,16 +35,23 @@ export interface SidebarFolder {
   readonly color: SidebarFolderColor;
 }
 
+/** A draft's folder choice: a folder id, or `none` when the user picked no folder. */
+export type DraftFolderChoice = string;
+const NO_FOLDER_CHOICE = "none";
+
 export interface SidebarFolderState {
   readonly folders: ReadonlyArray<SidebarFolder>;
   readonly folderIdByThreadKey: Readonly<Record<string, string>>;
   readonly activeFolderId: string | null;
+  /** Choices made in a new-thread draft, applied when the draft becomes a thread. */
+  readonly folderChoiceByDraftId: Readonly<Record<string, DraftFolderChoice>>;
 }
 
 export const EMPTY_SIDEBAR_FOLDER_STATE: SidebarFolderState = {
   folders: [],
   folderIdByThreadKey: {},
   activeFolderId: null,
+  folderChoiceByDraftId: {},
 };
 
 export function normalizeFolderName(name: string): string | null {
@@ -105,6 +112,9 @@ export function deleteFolder(state: SidebarFolderState, folderId: string): Sideb
       Object.entries(state.folderIdByThreadKey).filter(([, id]) => id !== folderId),
     ),
     activeFolderId: state.activeFolderId === folderId ? null : state.activeFolderId,
+    folderChoiceByDraftId: Object.fromEntries(
+      Object.entries(state.folderChoiceByDraftId).filter(([, id]) => id !== folderId),
+    ),
   };
 }
 
@@ -142,6 +152,46 @@ export function setActiveFolder(
       ? folderId
       : null;
   return state.activeFolderId === next ? state : { ...state, activeFolderId: next };
+}
+
+export function setDraftFolderChoice(
+  state: SidebarFolderState,
+  draftId: string,
+  folderId: string | null,
+): SidebarFolderState {
+  const choice = folderId ?? NO_FOLDER_CHOICE;
+  if (choice !== NO_FOLDER_CHOICE && !state.folders.some((candidate) => candidate.id === choice)) {
+    return state;
+  }
+  if (state.folderChoiceByDraftId[draftId] === choice) return state;
+  return { ...state, folderChoiceByDraftId: { ...state.folderChoiceByDraftId, [draftId]: choice } };
+}
+
+/**
+ * The folder a draft lands in: the user's choice, else the folder the sidebar is
+ * scoped to, so a thread started while looking at a folder stays in it.
+ */
+export function resolveDraftFolderId(state: SidebarFolderState, draftId: string): string | null {
+  const choice = state.folderChoiceByDraftId[draftId];
+  if (choice === NO_FOLDER_CHOICE) return null;
+  const folderId = choice ?? state.activeFolderId;
+  return folderId !== null && state.folders.some((candidate) => candidate.id === folderId)
+    ? folderId
+    : null;
+}
+
+/** Files the promoted thread under its draft's folder and forgets the draft's choice. */
+export function settlePromotedDraft(
+  state: SidebarFolderState,
+  draftId: string,
+  threadKey: string,
+): SidebarFolderState {
+  const folderId = resolveDraftFolderId(state, draftId);
+  const { [draftId]: _settled, ...folderChoiceByDraftId } = state.folderChoiceByDraftId;
+  const released =
+    draftId in state.folderChoiceByDraftId ? { ...state, folderChoiceByDraftId } : state;
+  if (folderId === null || threadKey in state.folderIdByThreadKey) return released;
+  return moveThreadsToFolder(released, [threadKey], folderId);
 }
 
 /** The folder every key shares, or null when they differ or any key has none. */
@@ -200,5 +250,13 @@ export function parseSidebarFolderState(value: unknown): SidebarFolderState {
     typeof raw.activeFolderId === "string" && seen.has(raw.activeFolderId)
       ? raw.activeFolderId
       : null;
-  return { folders, folderIdByThreadKey, activeFolderId };
+  const folderChoiceByDraftId: Record<string, DraftFolderChoice> = {};
+  if (raw.folderChoiceByDraftId && typeof raw.folderChoiceByDraftId === "object") {
+    for (const [draftId, choice] of Object.entries(raw.folderChoiceByDraftId)) {
+      if (typeof choice === "string" && (choice === NO_FOLDER_CHOICE || seen.has(choice))) {
+        folderChoiceByDraftId[draftId] = choice;
+      }
+    }
+  }
+  return { folders, folderIdByThreadKey, activeFolderId, folderChoiceByDraftId };
 }

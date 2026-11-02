@@ -45,6 +45,7 @@ import {
 import { BranchToolbarEnvironmentSelector } from "./BranchToolbarEnvironmentSelector";
 import { openAddProjectToMachine } from "./AddProjectToMachineDialog";
 import { type AddProjectTarget, useAddProjectTargets } from "../hooks/useAddProjectTargets";
+import { BranchToolbarFolderSelector } from "./BranchToolbarFolderSelector";
 import { BranchToolbarEnvModeSelector } from "./BranchToolbarEnvModeSelector";
 import { PreviousWorktreeItemContent } from "./PreviousWorktreeItemContent";
 import { ThreadDetailsControl } from "./chat/ThreadDetailsControl";
@@ -838,6 +839,12 @@ export const BranchToolbar = memo(function BranchToolbar({
           ) : null}
         </div>
       ) : null}
+
+      <BranchToolbarFolderSelector
+        environmentId={environmentId}
+        threadId={threadId}
+        {...(draftId ? { draftId } : {})}
+      />
 
       {composerControlsHostRef ? (
         <div
