@@ -37,6 +37,7 @@ import {
   CircleDashedIcon,
   CircleDotDashedIcon,
   ClockIcon,
+  FolderClosedIcon,
   GitBranchIcon,
   MessageCircleQuestionIcon,
   PinIcon,
@@ -61,6 +62,8 @@ import {
 import { useRightPanelStore } from "../../rightPanelStore";
 import { useOpenPrLink } from "../../lib/openPullRequestLink";
 import { useUiStateStore } from "../../uiStateStore";
+import { useSidebarFolderStore } from "../../sidebarFolderStore";
+import { SIDEBAR_FOLDER_COLORS } from "../../sidebarFolders.logic";
 import { useThreadSelectionStore } from "../../threadSelectionStore";
 import { useNowMinute } from "../../hooks/useNowMinute";
 import { useNowSecond } from "../../hooks/useNowSecond";
@@ -641,6 +644,23 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
   const localLastVisitedAt = useUiStateStore((state) => state.threadLastVisitedAtById[threadKey]);
   const lastVisitedAt = resolveThreadLastVisitedAt(thread.lastVisitedAt, localLastVisitedAt);
   const isSelected = useThreadSelectionStore((state) => state.selectedThreadKeys.has(threadKey));
+  const folder = useSidebarFolderStore((store) => {
+    const folderId = store.folderIdByThreadKey[threadKey];
+    return folderId === undefined
+      ? null
+      : (store.folders.find((candidate) => candidate.id === folderId) ?? null);
+  });
+  const folderColor = folder === null ? null : SIDEBAR_FOLDER_COLORS[folder.color];
+  // The stripe marks the row's folder at a glance in every list and scope.
+  const folderStripe =
+    folderColor === null ? null : (
+      <span
+        aria-hidden
+        data-testid="sidebar-folder-stripe"
+        className="pointer-events-none absolute inset-y-1.5 left-0 z-20 w-[3px] rounded-full"
+        style={{ backgroundColor: folderColor }}
+      />
+    );
   const openPrLink = useOpenPrLink();
   const runningTerminalIds = useThreadRunningTerminalIds({
     environmentId: thread.environmentId,
@@ -1122,6 +1142,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
             }
           >
             {accessibleTitle}
+            {folderStripe}
             <span
               className={cn(
                 "flex shrink-0 items-center transition-opacity",
@@ -1293,6 +1314,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
           }
         >
           {accessibleTitle}
+          {folderStripe}
           <div
             className={cn(
               "relative z-10 h-[4.875rem] px-(--sidebar-row-content-inset) py-(--sidebar-content-inset)",
@@ -1319,6 +1341,15 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
               ) : (
                 <span className="flex-1" />
               )}
+              {folder !== null && folderColor !== null ? (
+                <span
+                  className="inline-flex max-w-[45%] min-w-0 shrink items-center gap-1 text-xs"
+                  style={{ color: folderColor }}
+                >
+                  <FolderClosedIcon aria-hidden className="size-3 shrink-0" />
+                  <span className="truncate">{folder.name}</span>
+                </span>
+              ) : null}
               {sortable?.isDragging ? (
                 dragDestination
               ) : (

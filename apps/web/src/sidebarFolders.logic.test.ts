@@ -9,6 +9,7 @@ import {
   parseSidebarFolderState,
   renameFolder,
   setActiveFolder,
+  setFolderColor,
   sharedFolderId,
 } from "./sidebarFolders.logic";
 
@@ -23,8 +24,8 @@ const withFolders = createFolder(
 describe("sidebar folders", () => {
   it("creates folders with trimmed names and ignores blank names", () => {
     expect(withFolders.folders).toEqual([
-      { id: "ci", name: "CI" },
-      { id: "docs", name: "Docs" },
+      { id: "ci", name: "CI", color: "blue" },
+      { id: "docs", name: "Docs", color: "green" },
     ]);
     expect(createFolder(withFolders, { id: "blank", name: "   " })).toBe(withFolders);
   });
@@ -51,8 +52,16 @@ describe("sidebar folders", () => {
     expect(renameFolder(withFolders, "ci", "Pipelines").folders[0]).toEqual({
       id: "ci",
       name: "Pipelines",
+      color: "blue",
     });
     expect(renameFolder(withFolders, "ci", "  ")).toBe(withFolders);
+  });
+
+  it("gives each new folder an unused color and lets it change", () => {
+    const recolored = setFolderColor(withFolders, "ci", "green");
+    expect(recolored.folders.map((folder) => folder.color)).toEqual(["green", "green"]);
+    expect(createFolder(recolored, { id: "ops", name: "Ops" }).folders[2]?.color).toBe("blue");
+    expect(setFolderColor(withFolders, "ci", "blue")).toBe(withFolders);
   });
 
   it("reports the folder a selection shares", () => {
@@ -73,12 +82,16 @@ describe("sidebar folders", () => {
           { id: "ci", name: "CI" },
           { id: "ci", name: "Dup" },
           { id: "x", name: "" },
+          { id: "ops", name: "Ops", color: "teal" },
         ],
         folderIdByThreadKey: { "env:a": "ci", "env:b": "x" },
         activeFolderId: "x",
       }),
     ).toEqual({
-      folders: [{ id: "ci", name: "CI" }],
+      folders: [
+        { id: "ci", name: "CI", color: "blue" },
+        { id: "ops", name: "Ops", color: "teal" },
+      ],
       folderIdByThreadKey: { "env:a": "ci" },
       activeFolderId: null,
     });

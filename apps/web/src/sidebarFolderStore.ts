@@ -2,17 +2,20 @@ import * as Hex from "effect/encoding/Hex";
 import { create } from "zustand";
 
 import { parseFolderMenuAction } from "./components/threadActionMenu.logic";
-import { requestFolderName } from "./sidebarFolderNameRequest";
+import { requestFolderDetails } from "./sidebarFolderNameRequest";
 
 import {
   EMPTY_SIDEBAR_FOLDER_STATE,
   createFolder,
   deleteFolder,
   moveThreadsToFolder,
+  nextFolderColor,
   normalizeFolderName,
   parseSidebarFolderState,
   renameFolder,
   setActiveFolder,
+  setFolderColor,
+  type SidebarFolderColor,
   type SidebarFolderState,
 } from "./sidebarFolders.logic";
 
@@ -44,8 +47,8 @@ function persistFolders(state: SidebarFolderState): void {
 
 interface SidebarFolderStore extends SidebarFolderState {
   /** Returns the new folder id, or null when the name is blank. */
-  readonly createFolder: (name: string) => string | null;
-  readonly renameFolder: (folderId: string, name: string) => void;
+  readonly createFolder: (name: string, color?: SidebarFolderColor) => string | null;
+  readonly editFolder: (folderId: string, name: string, color: SidebarFolderColor) => void;
   readonly deleteFolder: (folderId: string) => void;
   readonly moveThreads: (threadKeys: ReadonlyArray<string>, folderId: string | null) => void;
   readonly setActiveFolder: (folderId: string | null) => void;
@@ -69,13 +72,16 @@ export const useSidebarFolderStore = create<SidebarFolderStore>()((set, get) => 
   };
   return {
     ...readPersistedFolders(),
-    createFolder: (name) => {
+    createFolder: (name, color) => {
       if (normalizeFolderName(name) === null) return null;
       const id = Hex.encode(globalThis.crypto.getRandomValues(new Uint8Array(12)));
-      apply((state) => createFolder(state, { id, name }));
+      apply((state) =>
+        createFolder(state, color === undefined ? { id, name } : { id, name, color }),
+      );
       return id;
     },
-    renameFolder: (folderId, name) => apply((state) => renameFolder(state, folderId, name)),
+    editFolder: (folderId, name, color) =>
+      apply((state) => setFolderColor(renameFolder(state, folderId, name), folderId, color)),
     deleteFolder: (folderId) => apply((state) => deleteFolder(state, folderId)),
     moveThreads: (threadKeys, folderId) =>
       apply((state) => moveThreadsToFolder(state, threadKeys, folderId)),
@@ -110,8 +116,14 @@ export async function applyFolderMenuAction(
   return true;
 }
 
-/** Prompts for a name and creates the folder; resolves its id, or null when cancelled. */
+/** Prompts for a name and color and creates the folder; resolves its id, or null when cancelled. */
 export async function requestNewFolder(): Promise<string | null> {
-  const name = await requestFolderName({ title: "New folder", submitLabel: "Create" });
-  return name === null ? null : useSidebarFolderStore.getState().createFolder(name);
+  const details = await requestFolderDetails({
+    title: "New folder",
+    submitLabel: "Create",
+    initial: { name: "", color: nextFolderColor(useSidebarFolderStore.getState().folders) },
+  });
+  return details === null
+    ? null
+    : useSidebarFolderStore.getState().createFolder(details.name, details.color);
 }

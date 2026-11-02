@@ -233,8 +233,12 @@ import {
   requestNewFolder,
   useSidebarFolderStore,
 } from "../sidebarFolderStore";
-import { countThreadsByFolder, sharedFolderId } from "../sidebarFolders.logic";
-import { requestFolderName } from "../sidebarFolderNameRequest";
+import {
+  SIDEBAR_FOLDER_COLORS,
+  countThreadsByFolder,
+  sharedFolderId,
+} from "../sidebarFolders.logic";
+import { requestFolderDetails } from "../sidebarFolderNameRequest";
 import { SidebarContent, SidebarGroup, useSidebar } from "./ui/sidebar";
 import { SidebarChromeFooter, SidebarChromeHeader } from "./sidebar/SidebarChrome";
 import { SidebarHeaderIconButton, SidebarThreadHeader } from "./sidebar/SidebarThreadHeader";
@@ -1078,12 +1082,14 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
     readonly value: string;
     readonly label: string;
     readonly folderId?: string;
+    readonly folderColor?: string;
   }> = [
     ...projectScopeItems,
     ...sidebarFolders.map((folder) => ({
       value: `folder:${folder.id}`,
       label: folder.name,
       folderId: folder.id,
+      folderColor: SIDEBAR_FOLDER_COLORS[folder.color],
     })),
     { value: "folder:new", label: "New folder…" },
   ];
@@ -1166,13 +1172,17 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
     const folderId = await requestNewFolder();
     if (folderId !== null) setFolderScope(folderId);
   });
-  const handleRenameFolder = useStableCallback(async (folderId: string, currentName: string) => {
-    const name = await requestFolderName({
-      title: "Rename folder",
-      submitLabel: "Rename",
-      initialName: currentName,
+  const handleEditFolder = useStableCallback(async (folderId: string) => {
+    const folder = useSidebarFolderStore.getState().folders.find((f) => f.id === folderId);
+    if (!folder) return;
+    const details = await requestFolderDetails({
+      title: "Edit folder",
+      submitLabel: "Save",
+      initial: { name: folder.name, color: folder.color },
     });
-    if (name !== null) useSidebarFolderStore.getState().renameFolder(folderId, name);
+    if (details !== null) {
+      useSidebarFolderStore.getState().editFolder(folderId, details.name, details.color);
+    }
   });
   const handleDeleteFolder = useStableCallback(async (folderId: string, name: string) => {
     const api = readLocalApi();
@@ -2857,7 +2867,10 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                     }
                   >
                     {scopedFolder ? (
-                      <FolderClosedIcon className="size-4 text-warning" />
+                      <FolderClosedIcon
+                        className="size-4"
+                        style={{ color: SIDEBAR_FOLDER_COLORS[scopedFolder.color] }}
+                      />
                     ) : scopedProjectGroup ? (
                       <span className="flex shrink-0">
                         <ProjectFavicon project={scopedProjectGroup} className="size-4" />
@@ -2914,7 +2927,10 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                         if (folderId !== undefined) {
                           return (
                             <ComboboxItem key={item.value} hideIndicator value={item}>
-                              <FolderClosedIcon className="size-4 shrink-0 text-warning" />
+                              <FolderClosedIcon
+                                className="size-4 shrink-0"
+                                style={{ color: item.folderColor }}
+                              />
                               <span className="min-w-0 flex-1 truncate text-sm">{item.label}</span>
                               <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
                                 {threadCountByFolder.get(folderId) ?? 0}
@@ -2924,14 +2940,14 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                                 variant="ghost-muted"
                                 tabIndex={-1}
                                 aria-hidden="true"
-                                title={`Rename folder ${item.label}`}
+                                title={`Edit folder ${item.label}`}
                                 onPointerDown={(event) => event.stopPropagation()}
                                 onClick={(event) => {
                                   event.preventDefault();
                                   event.stopPropagation();
                                   suppressNextScopeChangeRef.current = true;
                                   dispatchProjectScopeMenu({ type: "project-settings-opened" });
-                                  void handleRenameFolder(folderId, item.label);
+                                  void handleEditFolder(folderId);
                                 }}
                               >
                                 <PencilIcon className="size-3.5" />

@@ -1,36 +1,36 @@
 import { create } from "zustand";
 
-export type FolderNameRequest = {
+import type { SidebarFolderColor } from "./sidebarFolders.logic";
+
+export interface FolderDetails {
+  readonly name: string;
+  readonly color: SidebarFolderColor;
+}
+
+export type FolderDetailsRequest = {
   readonly title: string;
   readonly submitLabel: string;
-  readonly initialName: string;
-  readonly resolve: (name: string | null) => void;
+  readonly initial: FolderDetails;
+  readonly resolve: (details: FolderDetails | null) => void;
 };
-export const useFolderNameRequest = create<{ request: FolderNameRequest | null }>(() => ({
+export const useFolderDetailsRequest = create<{ request: FolderDetailsRequest | null }>(() => ({
   request: null,
 }));
 
-/** Asks for a folder name; resolves null when cancelled. */
-export function requestFolderName(input: {
+/** Asks for a folder's name and color; resolves null when cancelled. */
+export function requestFolderDetails(input: {
   readonly title: string;
   readonly submitLabel: string;
-  readonly initialName?: string;
-}): Promise<string | null> {
-  useFolderNameRequest.getState().request?.resolve(null);
+  readonly initial: FolderDetails;
+}): Promise<FolderDetails | null> {
+  useFolderDetailsRequest.getState().request?.resolve(null);
   return new Promise((resolve) =>
-    useFolderNameRequest.setState({
-      request: {
-        title: input.title,
-        submitLabel: input.submitLabel,
-        initialName: input.initialName ?? "",
-        resolve,
-      },
-    }),
+    useFolderDetailsRequest.setState({ request: { ...input, resolve } }),
   );
 }
 
-export function finishFolderNameRequest(name: string | null) {
-  const request = useFolderNameRequest.getState().request;
-  useFolderNameRequest.setState({ request: null });
-  request?.resolve(name);
+export function finishFolderDetailsRequest(details: FolderDetails | null) {
+  const request = useFolderDetailsRequest.getState().request;
+  useFolderDetailsRequest.setState({ request: null });
+  request?.resolve(details);
 }
