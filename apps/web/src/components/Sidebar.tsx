@@ -269,6 +269,7 @@ import {
   countThreadsByFolder,
   groupThreadsByFolder,
   moveInFolderOrder,
+  placeInFolderOrder,
   sharedFolderId,
   type SidebarFolder,
 } from "../sidebarFolders.logic";
@@ -3182,6 +3183,23 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
       }
     },
   );
+  // A folder row dropped on another folder row joins that folder at the drop point.
+  const handleFolderRowDrop = useStableCallback(
+    (draggedKey: string, targetKey: string, edge: "before" | "after") => {
+      const group = activeFolderGroups.find((candidate) =>
+        candidate.threads.some((thread) => threadShellKey(thread) === targetKey),
+      );
+      if (!group) return;
+      useSidebarFolderStore
+        .getState()
+        .placeThreadInFolder(
+          draggedKey,
+          group.folder.id,
+          placeInFolderOrder(group.threads.map(threadShellKey), draggedKey, targetKey, edge),
+        );
+    },
+  );
+  const folderRowDrag = { onDropThread: handleFolderRowDrop };
   const handleNewThreadClick = (event?: ReactMouseEvent) => {
     if (
       boringSidebarEnabled ||
@@ -3653,6 +3671,11 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                                 (section === "active" && threadKey in folderIdByThreadKey)
                               }
                               thread={thread}
+                              folderDrag={
+                                section === "active" && threadKey in folderIdByThreadKey
+                                  ? folderRowDrag
+                                  : undefined
+                              }
                               variant={rowVariant}
                               navigationParent={
                                 folderRow ??
@@ -3785,6 +3808,16 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                                   }
                                   onNewThread={() =>
                                     void handleNewThreadInFolder(group.folder.id, group.threads)
+                                  }
+                                  onDropThread={(draggedKey) =>
+                                    useSidebarFolderStore
+                                      .getState()
+                                      .placeThreadInFolder(draggedKey, group.folder.id, [
+                                        draggedKey,
+                                        ...group.threads
+                                          .map(threadShellKey)
+                                          .filter((key) => key !== draggedKey),
+                                      ])
                                   }
                                 />,
                               );

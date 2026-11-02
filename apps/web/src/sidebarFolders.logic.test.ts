@@ -13,6 +13,7 @@ import {
   groupThreadsByFolder,
   setFolderThreadOrder,
   moveInFolderOrder,
+  placeInFolderOrder,
   toggleFolderCollapsed,
   resolveDraftFolderId,
   setDraftFolderChoice,
@@ -183,5 +184,14 @@ describe("sidebar folders", () => {
     expect(moveInFolderOrder(order, "b", "bottom")).toEqual(["a", "c", "d", "b"]);
     expect(moveInFolderOrder(order, "a", "up")).toBe(order);
     expect(moveInFolderOrder(order, "x", "down")).toBe(order);
+  });
+
+  it("places a dragged row before or after its drop target", () => {
+    const order = ["a", "b", "c", "d"];
+    expect(placeInFolderOrder(order, "d", "b", "before")).toEqual(["a", "d", "b", "c"]);
+    expect(placeInFolderOrder(order, "a", "c", "after")).toEqual(["b", "c", "a", "d"]);
+    // A row from another folder joins this one at the drop point.
+    expect(placeInFolderOrder(order, "x", "a", "before")).toEqual(["x", "a", "b", "c", "d"]);
+    expect(placeInFolderOrder(order, "b", "b", "after")).toBe(order);
   });
 });

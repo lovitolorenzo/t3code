@@ -69,6 +69,12 @@ interface SidebarFolderStore extends SidebarFolderState {
   readonly toggleFolderCollapsed: (folderId: string) => void;
   /** Places the folder's rows in this order. */
   readonly setFolderOrder: (folderId: string, order: ReadonlyArray<string>) => void;
+  /** Files the thread in the folder and places the folder's rows in this order. */
+  readonly placeThreadInFolder: (
+    threadKey: string,
+    folderId: string,
+    order: ReadonlyArray<string>,
+  ) => void;
 }
 
 function pickState(store: SidebarFolderStore): SidebarFolderState {
@@ -116,6 +122,10 @@ export const useSidebarFolderStore = create<SidebarFolderStore>()((set, get) => 
     toggleFolderCollapsed: (folderId) => apply((state) => toggleFolderCollapsed(state, folderId)),
     setFolderOrder: (folderId, order) =>
       apply((state) => setFolderThreadOrder(state, folderId, order)),
+    placeThreadInFolder: (threadKey, folderId, order) =>
+      apply((state) =>
+        setFolderThreadOrder(moveThreadsToFolder(state, [threadKey], folderId), folderId, order),
+      ),
     forgetDraft: (draftId) =>
       apply((state) => {
         if (!(draftId in state.folderChoiceByDraftId)) return state;
