@@ -59,7 +59,17 @@ import {
 } from "@t3tools/contracts";
 import type { OlderSettledScope } from "@t3tools/client-runtime/state/threads";
 
-import { ChevronDownIcon, FolderIcon, ListFilterIcon, PlusIcon, SettingsIcon } from "lucide-react";
+import {
+  ChevronDownIcon,
+  FolderClosedIcon,
+  FolderIcon,
+  FolderPlusIcon,
+  ListFilterIcon,
+  PencilIcon,
+  PlusIcon,
+  SettingsIcon,
+  Trash2Icon,
+} from "lucide-react";
 import {
   useEffect,
   useLayoutEffect,
@@ -153,6 +163,7 @@ import { cn } from "~/lib/utils";
 import { ProjectEnvironmentBadge } from "./ProjectEnvironmentBadge";
 import {
   buildDraftActionMenuItems,
+  buildFolderMenuItem,
   buildThreadActionMenuItems,
   threadActionRequiresOperate,
 } from "./threadActionMenu.logic";
@@ -217,6 +228,13 @@ import {
   ComboboxTrigger,
   useComboboxFilter,
 } from "./ui/combobox";
+import {
+  applyFolderMenuAction,
+  requestNewFolder,
+  useSidebarFolderStore,
+} from "../sidebarFolderStore";
+import { countThreadsByFolder, sharedFolderId } from "../sidebarFolders.logic";
+import { requestFolderName } from "../sidebarFolderNameRequest";
 import { SidebarContent, SidebarGroup, useSidebar } from "./ui/sidebar";
 import { SidebarChromeFooter, SidebarChromeHeader } from "./sidebar/SidebarChrome";
 import { SidebarHeaderIconButton, SidebarThreadHeader } from "./sidebar/SidebarThreadHeader";
@@ -946,10 +964,22 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
   const routeThreadRef = resolveActiveThreadRouteRef(routeTarget, routeDraftThread);
   const routeThreadKey = routeThreadRef ? scopedThreadKey(routeThreadRef) : null;
 
+  const sidebarFolders = useSidebarFolderStore((store) => store.folders);
+  const folderIdByThreadKey = useSidebarFolderStore((store) => store.folderIdByThreadKey);
+  const activeFolderId = useSidebarFolderStore((store) => store.activeFolderId);
+  const setActiveFolder = useSidebarFolderStore((store) => store.setActiveFolder);
+  const activeFolder = sidebarFolders.find((folder) => folder.id === activeFolderId) ?? null;
   // A selection made under one scope can hold threads the next scope hides.
+  // Project and folder scopes are exclusive: picking one clears the other.
   const setProjectScopeKey = (key: string | null) => {
     clearSelection();
+    setActiveFolder(null);
     setPersistedProjectScopeKey(key);
+  };
+  const setFolderScope = (folderId: string) => {
+    clearSelection();
+    setPersistedProjectScopeKey(null);
+    setActiveFolder(folderId);
   };
   // A scope whose project is gone reads as all projects once every snapshot has
   // loaded. The stored key is left alone, so the scope returns with its project.
@@ -991,14 +1021,33 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
   // scrolled away; a remount starts at the top, so each mount scrolls to the open
   // thread once. Render decides the widening, so the first frame of the new route
   // already lists the row; the active row's ref callback scrolls to it.
-  const { widensScope: revealWidensScope } = resolveSidebarRouteReveal({
-    reveal: routeReveal,
-    routeKey: routeRowThreadKey,
-    isSearching: isSearchingThreads,
-    scopedProjectKeys: chosenScopeProjectKeys,
-    findThread: (key) => threads.find((candidate) => threadShellKey(candidate) === key),
-  });
+  const { pendingKey: revealPendingKey, widensScope: revealWidensScope } =
+    resolveSidebarRouteReveal({
+      reveal: routeReveal,
+      routeKey: routeRowThreadKey,
+      isSearching: isSearchingThreads,
+      scopedProjectKeys: chosenScopeProjectKeys,
+      findThread: (key) => threads.find((candidate) => threadShellKey(candidate) === key),
+    });
   const projectScopeKey = revealWidensScope ? null : chosenProjectScopeKey;
+  const revealLeavesFolder =
+    activeFolder !== null &&
+    revealPendingKey !== null &&
+    !isSearchingThreads &&
+    folderIdByThreadKey[revealPendingKey] !== activeFolder.id &&
+    threads.some((candidate) => threadShellKey(candidate) === revealPendingKey);
+  const scopedFolder = revealLeavesFolder ? null : activeFolder;
+  useEffect(() => {
+    if (!revealLeavesFolder) return;
+    clearSelection();
+    setActiveFolder(null);
+  }, [clearSelection, revealLeavesFolder, setActiveFolder]);
+  const folderScopedThreads =
+    scopedFolder === null
+      ? threads
+      : threads.filter(
+          (candidate) => folderIdByThreadKey[threadShellKey(candidate)] === scopedFolder.id,
+        );
   // The widened scope outlives the reveal, so it is written back to the persisted
   // scope. Route changes arrive from history, links and the palette, and only this
   // component holds the project groups that decide a widening, so no single
@@ -1023,11 +1072,27 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
     }
     return environmentLabelById.get(thread.environmentId) ?? null;
   };
+  const liveThreadKeys = new Set(threads.map(threadShellKey));
+  const threadCountByFolder = countThreadsByFolder(folderIdByThreadKey, liveThreadKeys);
+  const scopeItems: ReadonlyArray<{
+    readonly value: string;
+    readonly label: string;
+    readonly folderId?: string;
+  }> = [
+    ...projectScopeItems,
+    ...sidebarFolders.map((folder) => ({
+      value: `folder:${folder.id}`,
+      label: folder.name,
+      folderId: folder.id,
+    })),
+    { value: "folder:new", label: "New folder…" },
+  ];
   const selectedProjectScopeItem =
-    projectScopeItems.find((item) => item.value === (projectScopeKey ?? "all")) ??
-    projectScopeItems[0]!;
+    (scopedFolder !== null
+      ? scopeItems.find((item) => item.folderId === scopedFolder.id)
+      : scopeItems.find((item) => item.value === (projectScopeKey ?? "all"))) ?? scopeItems[0]!;
   const filteredProjectScopeItems = filterSidebarProjectScopeItems({
-    items: projectScopeItems,
+    items: scopeItems,
     query: projectScopeMenuState.query,
     matches: (item, query) =>
       projectScopeFilter.contains(item, query, (candidate) => candidate.label),
@@ -1097,6 +1162,32 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
     },
   );
 
+  const handleCreateFolderScope = useStableCallback(async () => {
+    const folderId = await requestNewFolder();
+    if (folderId !== null) setFolderScope(folderId);
+  });
+  const handleRenameFolder = useStableCallback(async (folderId: string, currentName: string) => {
+    const name = await requestFolderName({
+      title: "Rename folder",
+      submitLabel: "Rename",
+      initialName: currentName,
+    });
+    if (name !== null) useSidebarFolderStore.getState().renameFolder(folderId, name);
+  });
+  const handleDeleteFolder = useStableCallback(async (folderId: string, name: string) => {
+    const api = readLocalApi();
+    if (api) {
+      const confirmed = await settlePromise(() =>
+        api.dialogs.confirm(
+          [`Delete folder "${name}"?`, "Its threads stay where they are."].join("\n"),
+          { variant: "destructive" },
+        ),
+      );
+      if (confirmed._tag === "Failure" || !confirmed.value) return;
+    }
+    useSidebarFolderStore.getState().deleteFolder(folderId);
+  });
+
   const {
     workingShelfEnabled,
     pinnedThreads,
@@ -1136,7 +1227,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
     scopedProjectKeys,
     serverConfigs,
     optimisticDrop,
-    threads,
+    threads: folderScopedThreads,
     routeRowThreadKey,
   });
 
@@ -2118,6 +2209,14 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                 ]
               : []),
             { id: "mark-unread", label: `Mark unread (${count})` },
+            buildFolderMenuItem({
+              folders: useSidebarFolderStore.getState().folders,
+              currentId: sharedFolderId(
+                useSidebarFolderStore.getState().folderIdByThreadKey,
+                threadKeys,
+              ),
+              label: `Move to folder (${count})`,
+            }),
             {
               id: "delete",
               label: `Delete (${count})`,
@@ -2129,6 +2228,10 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
         ),
       );
       if (clicked._tag === "Failure" || clicked.value === null) return;
+      if (await applyFolderMenuAction(clicked.value, threadKeys)) {
+        clearSelection();
+        return;
+      }
       const actionTargets =
         clicked.value === "unpin"
           ? pinnedSelectedThreads
@@ -2406,11 +2509,16 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                 titleRegeneration: supportsTitleRegeneration,
               },
               snoozePresets,
+              folders: {
+                items: useSidebarFolderStore.getState().folders,
+                currentId: useSidebarFolderStore.getState().folderIdByThreadKey[threadKey] ?? null,
+              },
             }),
             position,
           ),
         );
         if (clicked._tag === "Failure" || clicked.value === null) return;
+        if (await applyFolderMenuAction(clicked.value, [threadKey])) return;
         if (threadActionRequiresOperate(clicked.value) && !checkThreadOperations([thread])) return;
         if (clicked.value?.startsWith("snooze:")) {
           const preset =
@@ -2704,7 +2812,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
               hasProjects={projectGroups.length > 0}
               projectScope={
                 <Combobox
-                  items={projectScopeItems}
+                  items={scopeItems}
                   filteredItems={filteredProjectScopeItems}
                   autoHighlight
                   itemToStringLabel={(item) => item.label}
@@ -2724,6 +2832,14 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                       return;
                     }
                     if (!item) return;
+                    if (item.value === "folder:new") {
+                      void handleCreateFolderScope();
+                      return;
+                    }
+                    if (item.folderId !== undefined) {
+                      setFolderScope(item.folderId);
+                      return;
+                    }
                     setProjectScopeKey(item.value === "all" ? null : item.value);
                   }}
                 >
@@ -2731,14 +2847,18 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                     render={
                       <SidebarHeaderIconButton
                         label={
-                          scopedProjectGroup
-                            ? `Filter threads by project: ${scopedProjectGroup.displayName}`
-                            : "Filter threads by project"
+                          scopedFolder
+                            ? `Filter threads by folder: ${scopedFolder.name}`
+                            : scopedProjectGroup
+                              ? `Filter threads by project: ${scopedProjectGroup.displayName}`
+                              : "Filter threads by project or folder"
                         }
                       />
                     }
                   >
-                    {scopedProjectGroup ? (
+                    {scopedFolder ? (
+                      <FolderClosedIcon className="size-4 text-warning" />
+                    ) : scopedProjectGroup ? (
                       <span className="flex shrink-0">
                         <ProjectFavicon project={scopedProjectGroup} className="size-4" />
                       </span>
@@ -2752,8 +2872,8 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                     className="max-w-[min(18rem,var(--available-width))] overflow-hidden"
                   >
                     <ComboboxSearchInput
-                      aria-label="Search projects"
-                      placeholder="Search projects..."
+                      aria-label="Search projects and folders"
+                      placeholder="Search projects and folders..."
                       value={projectScopeMenuState.query}
                       onKeyDown={(event) => {
                         if (
@@ -2777,9 +2897,65 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                         })
                       }
                     />
-                    <ComboboxEmpty>No matching projects.</ComboboxEmpty>
+                    <ComboboxEmpty>No matching projects or folders.</ComboboxEmpty>
                     <ComboboxList>
-                      {(item: (typeof projectScopeItems)[number]) => {
+                      {(item: (typeof scopeItems)[number]) => {
+                        if (item.value === "folder:new") {
+                          return (
+                            <ComboboxItem key={item.value} hideIndicator value={item}>
+                              <FolderPlusIcon className="size-4 shrink-0 text-muted-foreground" />
+                              <span className="min-w-0 flex-1 truncate text-sm text-muted-foreground">
+                                {item.label}
+                              </span>
+                            </ComboboxItem>
+                          );
+                        }
+                        const folderId = item.folderId;
+                        if (folderId !== undefined) {
+                          return (
+                            <ComboboxItem key={item.value} hideIndicator value={item}>
+                              <FolderClosedIcon className="size-4 shrink-0 text-warning" />
+                              <span className="min-w-0 flex-1 truncate text-sm">{item.label}</span>
+                              <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
+                                {threadCountByFolder.get(folderId) ?? 0}
+                              </span>
+                              <Button
+                                size="icon-xs"
+                                variant="ghost-muted"
+                                tabIndex={-1}
+                                aria-hidden="true"
+                                title={`Rename folder ${item.label}`}
+                                onPointerDown={(event) => event.stopPropagation()}
+                                onClick={(event) => {
+                                  event.preventDefault();
+                                  event.stopPropagation();
+                                  suppressNextScopeChangeRef.current = true;
+                                  dispatchProjectScopeMenu({ type: "project-settings-opened" });
+                                  void handleRenameFolder(folderId, item.label);
+                                }}
+                              >
+                                <PencilIcon className="size-3.5" />
+                              </Button>
+                              <Button
+                                size="icon-xs"
+                                variant="ghost-muted"
+                                tabIndex={-1}
+                                aria-hidden="true"
+                                title={`Delete folder ${item.label}`}
+                                onPointerDown={(event) => event.stopPropagation()}
+                                onClick={(event) => {
+                                  event.preventDefault();
+                                  event.stopPropagation();
+                                  suppressNextScopeChangeRef.current = true;
+                                  dispatchProjectScopeMenu({ type: "project-settings-opened" });
+                                  void handleDeleteFolder(folderId, item.label);
+                                }}
+                              >
+                                <Trash2Icon className="size-3.5" />
+                              </Button>
+                            </ComboboxItem>
+                          );
+                        }
                         const project = projectGroupByScopeKey.get(item.value) ?? null;
                         return (
                           <ComboboxItem
