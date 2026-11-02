@@ -2,7 +2,7 @@ import { CollapsibleSectionHeader } from "../ui/collapsible-section-header";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { FolderClosedIcon, PlusIcon } from "lucide-react";
-import { type ReactNode } from "react";
+import { type DOMAttributes, type ReactNode, useState } from "react";
 import { cn } from "~/lib/utils";
 import { useClientSettings } from "../../hooks/useSettings";
 import {
@@ -10,13 +10,18 @@ import {
   sidebarMarkerId,
   type SidebarListMarker,
 } from "../Sidebar.logic";
-import { SIDEBAR_SORTABLE_DRAG_DISABLED } from "./SidebarThreadRow";
+import {
+  isSidebarFolderRowDrag,
+  SIDEBAR_FOLDER_ROW_MIME,
+  SIDEBAR_SORTABLE_DRAG_DISABLED,
+} from "./SidebarThreadRow";
 import { SidebarThreadUndoNotice } from "./SidebarThreadUndoNotice";
 
 function SortableSidebarMarker(props: {
   marker: SidebarListMarker;
   className?: string;
   children?: ReactNode;
+  dropHandlers?: Pick<DOMAttributes<HTMLLIElement>, "onDragOver" | "onDragLeave" | "onDrop">;
   "data-testid"?: string;
 }) {
   const { setNodeRef, transform, transition } = useSortable({
@@ -27,6 +32,7 @@ function SortableSidebarMarker(props: {
   return (
     <li
       ref={setNodeRef}
+      {...props.dropHandlers}
       data-thread-selection-safe
       data-testid={props["data-testid"]}
       className={cn("list-none", props.className)}
@@ -159,12 +165,38 @@ export function SidebarFolderGroupHeader(props: {
   expanded: boolean;
   onToggle: () => void;
   onNewThread: () => void;
+  /** A folder row dropped on the header moves to the top of this folder. */
+  onDropThread: (draggedKey: string) => void;
 }) {
+  const [isDropTarget, setIsDropTarget] = useState(false);
   return (
     <SortableSidebarMarker
       marker={`folder-header:${props.folderId}`}
       data-testid="sidebar-folder-group-header"
-      className="group/folder-header relative mx-0.5 h-8"
+      className={cn(
+        "group/folder-header relative mx-0.5 h-8 rounded-md",
+        isDropTarget && "bg-sidebar-row-hover",
+      )}
+      dropHandlers={{
+        onDragOver: (event) => {
+          if (!isSidebarFolderRowDrag(event)) return;
+          event.preventDefault();
+          event.dataTransfer.dropEffect = "move";
+          setIsDropTarget(true);
+        },
+        onDragLeave: (event) => {
+          if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
+            setIsDropTarget(false);
+          }
+        },
+        onDrop: (event) => {
+          if (!isSidebarFolderRowDrag(event)) return;
+          event.preventDefault();
+          setIsDropTarget(false);
+          const draggedKey = event.dataTransfer.getData(SIDEBAR_FOLDER_ROW_MIME);
+          if (draggedKey) props.onDropThread(draggedKey);
+        },
+      }}
     >
       <CollapsibleSectionHeader
         onClick={props.onToggle}

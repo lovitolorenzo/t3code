@@ -217,6 +217,21 @@ export function moveInFolderOrder(
   return next;
 }
 
+/** The folder's row order after dropping a row just before or after another one. */
+export function placeInFolderOrder(
+  order: ReadonlyArray<string>,
+  draggedKey: string,
+  targetKey: string,
+  edge: "before" | "after",
+): ReadonlyArray<string> {
+  if (draggedKey === targetKey) return order;
+  const next = order.filter((key) => key !== draggedKey);
+  const target = next.indexOf(targetKey);
+  if (target === -1) return order;
+  next.splice(edge === "before" ? target : target + 1, 0, draggedKey);
+  return next;
+}
+
 export interface FolderThreadGroup<T> {
   readonly folder: SidebarFolder;
   readonly threads: ReadonlyArray<T>;

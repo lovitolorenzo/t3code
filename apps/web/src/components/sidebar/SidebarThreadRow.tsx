@@ -7,6 +7,7 @@ import { useDeadlinePassed } from "~/hooks/useDeadline";
 import { resolveThreadCurrentPullRequestLink } from "@t3tools/client-runtime/thread-pull-requests";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
+import { create } from "zustand";
 import {
   canSnooze,
   hasQueuedTurnStart,
@@ -55,6 +56,7 @@ import {
   useRef,
   useState,
   type KeyboardEvent as ReactKeyboardEvent,
+  type DragEvent as ReactDragEvent,
   type MouseEvent as ReactMouseEvent,
   type PointerEvent as ReactPointerEvent,
   type ReactNode,
@@ -515,7 +517,32 @@ const dropVerbBadge: Record<SidebarDropVerb, ReactNode> = {
   ),
 };
 
+/** Drag data type for rows moved between and inside sidebar folder groups. */
+export const SIDEBAR_FOLDER_ROW_MIME = "application/x-t3code-sidebar-folder-row";
+
+export function isSidebarFolderRowDrag(event: { dataTransfer: DataTransfer }): boolean {
+  return event.dataTransfer.types.includes(SIDEBAR_FOLDER_ROW_MIME);
+}
+
+// One drop marker for the whole list: the dragged row clears it when the drag
+// ends, so a cancelled drag never leaves a marker on the row it last crossed.
+const useFolderRowDropTarget = create<{
+  readonly targetKey: string | null;
+  readonly edge: "before" | "after";
+}>(() => ({ targetKey: null, edge: "before" }));
+const clearFolderRowDropTarget = () => useFolderRowDropTarget.setState({ targetKey: null });
+
 type SidebarThreadRowProps = {
+  /** Set for active rows in a folder group; they reorder by native drag. */
+  folderDrag?:
+    | {
+        readonly onDropThread: (
+          draggedKey: string,
+          targetKey: string,
+          edge: "before" | "after",
+        ) => void;
+      }
+    | undefined;
   thread: SidebarThreadSummary;
   variant: "card" | "slim";
   variantAction: SidebarSweepAction;
@@ -653,6 +680,65 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
       : (store.folders.find((candidate) => candidate.id === folderId) ?? null);
   });
   const folderColor = folder === null ? null : SIDEBAR_FOLDER_COLORS[folder.color];
+  // Folder rows move with native drag, apart from the sidebar's pin and settle drag.
+  const { folderDrag } = props;
+  const folderDropEdge = useFolderRowDropTarget((state) =>
+    state.targetKey === threadKey ? state.edge : null,
+  );
+  const edgeAt = (event: ReactDragEvent<HTMLElement>) => {
+    const box = event.currentTarget.getBoundingClientRect();
+    return event.clientY < box.top + box.height / 2 ? "before" : "after";
+  };
+  const folderRowDragProps = folderDrag
+    ? {
+        draggable: true,
+        onDragStart: (event: ReactDragEvent<HTMLElement>) => {
+          event.dataTransfer.setData(SIDEBAR_FOLDER_ROW_MIME, threadKey);
+          event.dataTransfer.effectAllowed = "move";
+        },
+        onDragEnter: (event: ReactDragEvent<HTMLElement>) => {
+          if (isSidebarFolderRowDrag(event)) event.preventDefault();
+          else fileDropHandlers?.onDragEnter(event);
+        },
+        onDragOver: (event: ReactDragEvent<HTMLElement>) => {
+          if (!isSidebarFolderRowDrag(event)) {
+            fileDropHandlers?.onDragOver(event);
+            return;
+          }
+          event.preventDefault();
+          event.dataTransfer.dropEffect = "move";
+          const edge = edgeAt(event);
+          if (folderDropEdge !== edge) {
+            useFolderRowDropTarget.setState({ targetKey: threadKey, edge });
+          }
+        },
+        onDragLeave: (event: ReactDragEvent<HTMLElement>) => {
+          if (!isSidebarFolderRowDrag(event)) {
+            fileDropHandlers?.onDragLeave(event);
+            return;
+          }
+          if (
+            !event.currentTarget.contains(event.relatedTarget as Node | null) &&
+            useFolderRowDropTarget.getState().targetKey === threadKey
+          ) {
+            clearFolderRowDropTarget();
+          }
+        },
+        onDrop: (event: ReactDragEvent<HTMLElement>) => {
+          if (!isSidebarFolderRowDrag(event)) {
+            fileDropHandlers?.onDrop(event);
+            return;
+          }
+          event.preventDefault();
+          clearFolderRowDropTarget();
+          const draggedKey = event.dataTransfer.getData(SIDEBAR_FOLDER_ROW_MIME);
+          if (draggedKey && draggedKey !== threadKey) {
+            folderDrag.onDropThread(draggedKey, threadKey, edgeAt(event));
+          }
+        },
+        onDragEnd: clearFolderRowDropTarget,
+      }
+    : null;
   const suggestedFolderId = useFolderSuggestion(threadKey);
   const suggestedFolder = useSidebarFolderStore((store) =>
     suggestedFolderId === null
@@ -1308,13 +1394,24 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
     <li
       data-thread-item={threadKey}
       {...sortableRootProps}
-      {...(fileDropHandlers ?? {})}
+      {...(folderRowDragProps ?? fileDropHandlers ?? {})}
       className={cn(
         "list-none py-0.5 [content-visibility:auto] [contain-intrinsic-size:auto_78px]",
         metaLineEmpty && "redesign:[contain-intrinsic-size:auto_58px]",
         sortable?.isDragging && "relative z-20",
+        folderRowDragProps && "relative",
       )}
     >
+      {folderDropEdge !== null ? (
+        <span
+          aria-hidden
+          className={cn(
+            "pointer-events-none absolute inset-x-1 z-30 h-0.5 rounded-full",
+            folderDropEdge === "before" ? "top-0" : "bottom-0",
+          )}
+          style={{ backgroundColor: folderColor ?? undefined }}
+        />
+      ) : null}
       <Tooltip disabled={snoozeMenuOpen || sortable?.isDragging}>
         <TooltipTrigger
           render={
