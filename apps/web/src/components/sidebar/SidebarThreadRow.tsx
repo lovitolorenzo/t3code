@@ -689,10 +689,15 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
     const box = event.currentTarget.getBoundingClientRect();
     return event.clientY < box.top + box.height / 2 ? "before" : "after";
   };
+  // Renaming selects text in the row's input, so the row must not drag meanwhile.
   const folderRowDragProps = folderDrag
     ? {
-        draggable: true,
+        draggable: !isRenaming,
         onDragStart: (event: ReactDragEvent<HTMLElement>) => {
+          if (isRenaming || (event.target as HTMLElement).closest("input, textarea")) {
+            event.preventDefault();
+            return;
+          }
           event.dataTransfer.setData(SIDEBAR_FOLDER_ROW_MIME, threadKey);
           event.dataTransfer.effectAllowed = "move";
         },
@@ -1412,7 +1417,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
           style={{ backgroundColor: folderColor ?? undefined }}
         />
       ) : null}
-      <Tooltip disabled={snoozeMenuOpen || sortable?.isDragging}>
+      <Tooltip disabled={snoozeMenuOpen || sortable?.isDragging || isRenaming}>
         <TooltipTrigger
           render={
             <div
