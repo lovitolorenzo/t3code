@@ -530,6 +530,37 @@ describe("sidebar drag projection", () => {
     expect(byTime.get("w")).toEqual(stationary);
   });
 
+  it("keeps folder groups under their headers, below the unfiled rows", () => {
+    const folderHeader = marker("folder-header:f");
+    const items = [
+      pinnedHeader,
+      thread("p", "pinned"),
+      divider,
+      thread("a1", "active"),
+      folderHeader,
+      thread("f1", "active"),
+      thread("f2", "active"),
+      settledHeader,
+      marker("settled-placeholder"),
+    ];
+    const input = {
+      items,
+      settledOrder: [],
+      settledExpanded: false,
+      activeOrder: ["f1", "a1", "f2"],
+    };
+    const inPlace = preview(input, "a1", "f1");
+    for (const id of [sidebarListItemId(folderHeader), "f1", "f2"]) {
+      expect(inPlace.get(id)).toEqual(stationary);
+    }
+    // A pin joins the unfiled rows by time, above the folder groups.
+    const unpinned = preview({ ...input, activeOrder: ["a1", "f1", "p", "f2"] }, "p", "a1");
+    expect(unpinned.get("a1")?.y).toBe(-83);
+    for (const id of [sidebarListItemId(folderHeader), "f1", "f2"]) {
+      expect(unpinned.get(id)).toEqual(stationary);
+    }
+  });
+
   it("updates the projection when the target or measured geometry changes", () => {
     const strategy = createSidebarSortingStrategy({
       items: pinned,

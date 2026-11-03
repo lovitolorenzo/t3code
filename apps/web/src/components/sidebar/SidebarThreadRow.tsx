@@ -524,13 +524,16 @@ export function isSidebarFolderRowDrag(event: { dataTransfer: DataTransfer }): b
   return event.dataTransfer.types.includes(SIDEBAR_FOLDER_ROW_MIME);
 }
 
-// One drop marker for the whole list: the dragged row clears it when the drag
-// ends, so a cancelled drag never leaves a marker on the row it last crossed.
-const useFolderRowDropTarget = create<{
+// One drop marker for the whole list, cleared when the drag ends. The key is a
+// folder row's thread key or a folder header's marker id; the sidebar's own
+// drag also names the folder, which the dragged row shows.
+export const useFolderRowDropTarget = create<{
   readonly targetKey: string | null;
   readonly edge: "before" | "after";
-}>(() => ({ targetKey: null, edge: "before" }));
-const clearFolderRowDropTarget = () => useFolderRowDropTarget.setState({ targetKey: null });
+  readonly folderId: string | null;
+}>(() => ({ targetKey: null, edge: "before", folderId: null }));
+export const clearFolderRowDropTarget = () =>
+  useFolderRowDropTarget.setState({ targetKey: null, folderId: null });
 
 type SidebarThreadRowProps = {
   /** Set for active rows in a folder group; they reorder by native drag. */
@@ -1079,13 +1082,30 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
         ...sortable.listeners,
       }
     : {};
+  const dropFolderId = useFolderRowDropTarget((state) =>
+    sortable?.isDragging ? state.folderId : null,
+  );
+  const dropFolder = useSidebarFolderStore((store) =>
+    dropFolderId === null
+      ? null
+      : (store.folders.find((candidate) => candidate.id === dropFolderId) ?? null),
+  );
   const destinationVerb = sortable?.isDragging
     ? props.dropVerb
     : props.sweepAction === "unsnooze"
       ? "wake"
       : props.sweepAction;
   const dragDestination =
-    destinationVerb !== null ? (
+    dropFolder !== null ? (
+      <span
+        role="status"
+        className="pointer-events-none ml-auto inline-flex h-5 min-w-0 shrink items-center gap-1 rounded-sm border border-current/40 px-1.5 text-2xs font-medium"
+        style={{ color: SIDEBAR_FOLDER_COLORS[dropFolder.color] }}
+      >
+        <FolderClosedIcon aria-hidden className="size-3 shrink-0" />
+        <span className="truncate">{dropFolder.name}</span>
+      </span>
+    ) : destinationVerb !== null ? (
       <span
         role="status"
         className="pointer-events-none ml-auto inline-flex h-5 shrink-0 items-center gap-1 rounded-sm border border-primary/40 bg-primary/10 px-1.5 text-2xs font-medium text-primary"
@@ -1398,6 +1418,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
   return (
     <li
       data-thread-item={threadKey}
+      data-folder-row={folderRowDragProps ? folder?.id : undefined}
       {...sortableRootProps}
       {...(folderRowDragProps ?? fileDropHandlers ?? {})}
       className={cn(
