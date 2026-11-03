@@ -554,6 +554,8 @@ export const useFolderRowDropTarget = create<{
   readonly edge: "before" | "after";
   readonly folderId: string | null;
 }>(() => ({ targetKey: null, edge: "before", folderId: null }));
+/** Drop target key for a folder row dragged anywhere outside the folders. */
+export const SIDEBAR_UNFILED_DROP = "unfiled";
 export const clearFolderRowDropTarget = () =>
   useFolderRowDropTarget.setState({ targetKey: null, folderId: null });
 
