@@ -56,18 +56,24 @@ export function SidebarSectionPlaceholder(props: {
   label: string;
   showHint: boolean;
   isDropTarget: boolean;
+  /** Covers the row below it without catching the drag, for a non-empty section. */
+  opaque?: boolean;
 }) {
   return (
     <SortableSidebarMarker
       marker={props.marker}
       data-testid={`sidebar-${props.marker}`}
-      className="relative mx-0.5 -mb-px h-0"
+      className="relative z-10 mx-0.5 -mb-px h-0"
     >
       {props.showHint ? (
         <div
           className={cn(
             "absolute inset-x-0 top-0 flex h-9 items-center justify-center rounded-md border border-dashed border-sidebar-foreground/25 text-xs text-sidebar-foreground/80",
-            props.isDropTarget && "border-primary/40 bg-primary/5 text-primary",
+            props.opaque && "pointer-events-none bg-sidebar",
+            props.isDropTarget &&
+              (props.opaque
+                ? "border-primary/40 bg-linear-to-b from-primary/5 to-primary/5 text-primary"
+                : "border-primary/40 bg-primary/5 text-primary"),
           )}
         >
           {props.label}

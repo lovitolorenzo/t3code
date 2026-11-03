@@ -79,6 +79,7 @@ import {
   useState,
   useSyncExternalStore,
   type KeyboardEvent as ReactKeyboardEvent,
+  type DragEvent as ReactDragEvent,
   type MouseEvent as ReactMouseEvent,
   type ReactNode,
 } from "react";
@@ -257,6 +258,9 @@ import {
   SidebarSearchResultRow,
   SortableThreadRow,
   clearFolderRowDropTarget,
+  isSidebarFolderRowDrag,
+  SIDEBAR_FOLDER_ROW_MIME,
+  SIDEBAR_UNFILED_DROP,
   useFolderRowDropTarget,
   type SidebarProviderEntry,
   type SidebarSweepAction,
@@ -2988,6 +2992,35 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
     },
   );
   const folderRowDrag = { onDropThread: handleFolderRowDrop };
+  // A folder row dropped anywhere in the list outside the folders leaves its folder.
+  const unfiledDropActive = useFolderRowDropTarget(
+    (state) => state.targetKey === SIDEBAR_UNFILED_DROP,
+  );
+  const isUnfiledDrop = (event: ReactDragEvent<HTMLElement>) =>
+    isSidebarFolderRowDrag(event) &&
+    (event.target as HTMLElement).closest("[data-folder-row], [data-folder-header]") === null;
+  const unfiledDropHandlers = {
+    onDragOver: (event: ReactDragEvent<HTMLElement>) => {
+      if (!isUnfiledDrop(event)) return;
+      event.preventDefault();
+      event.dataTransfer.dropEffect = "move";
+      if (!unfiledDropActive) {
+        useFolderRowDropTarget.setState({ targetKey: SIDEBAR_UNFILED_DROP, folderId: null });
+      }
+    },
+    onDragLeave: (event: ReactDragEvent<HTMLElement>) => {
+      if (!event.currentTarget.contains(event.relatedTarget as Node | null) && unfiledDropActive) {
+        clearFolderRowDropTarget();
+      }
+    },
+    onDrop: (event: ReactDragEvent<HTMLElement>) => {
+      if (!isUnfiledDrop(event)) return;
+      event.preventDefault();
+      clearFolderRowDropTarget();
+      const draggedKey = event.dataTransfer.getData(SIDEBAR_FOLDER_ROW_MIME);
+      if (draggedKey) useSidebarFolderStore.getState().moveThreads([draggedKey], null);
+    },
+  };
   const handleNewThreadClick = (event?: ReactMouseEvent) => {
     if (shouldCreateNewThreadInCurrentProject(event?.shiftKey ?? false, projectGroups.length)) {
       if (isMobile) setOpenMobile(false);
@@ -3328,6 +3361,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                   <SortableContext items={sortableIds} strategy={sidebarSortingStrategy}>
                     <ul
                       ref={attachListMotionRef}
+                      {...unfiledDropHandlers}
                       // Presentation flattens VoiceOver's list interaction boundary while preserving descendant
                       // controls.
                       role="presentation"
@@ -3541,16 +3575,18 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                                 <SidebarSectionPlaceholder
                                   key="active-placeholder"
                                   marker="active-placeholder"
-                                  label="Active"
+                                  label={unfiledDropActive ? "Remove from folder" : "Active"}
                                   showHint={
-                                    from !== null &&
-                                    (activeThreads.length === 0 ||
-                                      (from === "active" &&
-                                        activeThreads.length === 1 &&
-                                        dragTargetSection !== null &&
-                                        dragTargetSection !== "active"))
+                                    unfiledDropActive ||
+                                    (from !== null &&
+                                      (activeThreads.length === 0 ||
+                                        (from === "active" &&
+                                          activeThreads.length === 1 &&
+                                          dragTargetSection !== null &&
+                                          dragTargetSection !== "active")))
                                   }
-                                  isDropTarget={dragTargetSection === "active"}
+                                  isDropTarget={unfiledDropActive || dragTargetSection === "active"}
+                                  opaque={unfiledDropActive}
                                 />,
                               );
                               break;
