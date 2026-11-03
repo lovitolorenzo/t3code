@@ -121,6 +121,19 @@ export function createSidebarSortingStrategy(input: {
       snoozed: [],
       settled: [],
     };
+    // Folder groups close the active section, each row under its header, and
+    // hold their place: only unfiled rows take part in the drag's ordering.
+    const firstFolder = items.findIndex(
+      (item) => item.kind === "marker" && item.marker.startsWith("folder-header:"),
+    );
+    const folderItems: SidebarListItem[] = [];
+    if (firstFolder !== -1) {
+      for (const item of items.slice(firstFolder)) {
+        if (item.kind === "thread" ? item.section !== "active" : isShelfHeader(item)) break;
+        if (item.kind === "marker" || item.key !== active.key) folderItems.push(item);
+      }
+    }
+    const folderKeys = new Set(folderItems.map(sidebarListItemId));
     let cardHeight = input.cardHeight;
     let slimHeight = input.slimHeight;
     let headerScale: number | undefined;
@@ -135,7 +148,7 @@ export function createSidebarSortingStrategy(input: {
       if (item.section === "pinned" || item.section === "active" || item.section === "working")
         cardHeight ??= rects[index]?.height;
       else slimHeight ??= rects[index]?.height;
-      if (item.key !== active.key) groups[item.section].push(item);
+      if (item.key !== active.key && !folderKeys.has(item.key)) groups[item.section].push(item);
     }
     const scale =
       slimHeight !== undefined ? slimHeight / 36 : (headerScale ?? (cardHeight ?? 82) / 82);
@@ -176,6 +189,7 @@ export function createSidebarSortingStrategy(input: {
     projected.push(...groups.pinned);
     marker("pinned-divider");
     section("active");
+    projected.push(...folderItems);
     if (items.some((item) => item.kind === "marker" && item.marker === "working-header")) {
       marker("working-header");
       projected.push(...groups.working);

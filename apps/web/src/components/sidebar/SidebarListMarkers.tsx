@@ -2,7 +2,7 @@ import { FolderClosedIcon, PlusIcon } from "lucide-react";
 import { CollapsibleSectionHeader } from "../ui/collapsible-section-header";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { type DOMAttributes, type ReactNode, useLayoutEffect, useState } from "react";
+import { type DOMAttributes, type ReactNode, useLayoutEffect } from "react";
 import { cn } from "~/lib/utils";
 import {
   animateSidebarLayoutChanges,
@@ -10,9 +10,11 @@ import {
   type SidebarListMarker,
 } from "../Sidebar.logic";
 import {
+  clearFolderRowDropTarget,
   isSidebarFolderRowDrag,
   SIDEBAR_FOLDER_ROW_MIME,
   SIDEBAR_SORTABLE_DRAG_DISABLED,
+  useFolderRowDropTarget,
 } from "./SidebarThreadRow";
 
 function SortableSidebarMarker(props: {
@@ -22,6 +24,7 @@ function SortableSidebarMarker(props: {
   revealOverflow?: boolean;
   dropHandlers?: Pick<DOMAttributes<HTMLLIElement>, "onDragOver" | "onDragLeave" | "onDrop">;
   "data-testid"?: string;
+  "data-folder-header"?: string;
 }) {
   const { node, setNodeRef, transform, transition } = useSortable({
     id: sidebarMarkerId(props.marker),
@@ -40,6 +43,7 @@ function SortableSidebarMarker(props: {
       {...props.dropHandlers}
       data-thread-selection-safe
       data-testid={props["data-testid"]}
+      data-folder-header={props["data-folder-header"]}
       className={cn("list-none", props.className)}
       style={{
         transform: CSS.Translate.toString(transform),
@@ -161,14 +165,16 @@ export function SidebarFolderGroupHeader(props: {
   expanded: boolean;
   onToggle: () => void;
   onNewThread: () => void;
-  /** A folder row dropped on the header moves to the top of this folder. */
+  /** A thread dropped on the header moves to the top of this folder. */
   onDropThread: (draggedKey: string) => void;
 }) {
-  const [isDropTarget, setIsDropTarget] = useState(false);
+  const marker = `folder-header:${props.folderId}` as const;
+  const isDropTarget = useFolderRowDropTarget((state) => state.targetKey === marker);
   return (
     <SortableSidebarMarker
-      marker={`folder-header:${props.folderId}`}
+      marker={marker}
       data-testid="sidebar-folder-group-header"
+      data-folder-header={props.folderId}
       className={cn(
         "group/folder-header relative mx-0.5 h-8 rounded-md",
         isDropTarget && "bg-sidebar-row-hover",
@@ -178,17 +184,17 @@ export function SidebarFolderGroupHeader(props: {
           if (!isSidebarFolderRowDrag(event)) return;
           event.preventDefault();
           event.dataTransfer.dropEffect = "move";
-          setIsDropTarget(true);
+          if (!isDropTarget) useFolderRowDropTarget.setState({ targetKey: marker });
         },
         onDragLeave: (event) => {
-          if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
-            setIsDropTarget(false);
+          if (!event.currentTarget.contains(event.relatedTarget as Node | null) && isDropTarget) {
+            clearFolderRowDropTarget();
           }
         },
         onDrop: (event) => {
           if (!isSidebarFolderRowDrag(event)) return;
           event.preventDefault();
-          setIsDropTarget(false);
+          clearFolderRowDropTarget();
           const draggedKey = event.dataTransfer.getData(SIDEBAR_FOLDER_ROW_MIME);
           if (draggedKey) props.onDropThread(draggedKey);
         },

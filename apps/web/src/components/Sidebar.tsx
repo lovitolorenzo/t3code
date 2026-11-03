@@ -19,6 +19,7 @@ import {
   useSensor,
   useSensors,
   type DragEndEvent,
+  type DragMoveEvent,
   type DragOverEvent,
   type DragStartEvent,
   type Modifier,
@@ -282,6 +283,8 @@ import { useThreadRouteTarget } from "../hooks/useThreadRouteTarget";
 import {
   SidebarSearchResultRow,
   SortableThreadRow,
+  clearFolderRowDropTarget,
+  useFolderRowDropTarget,
   type SidebarProviderEntry,
   type SidebarSweepAction,
 } from "./sidebar/SidebarThreadRow";
@@ -1887,6 +1890,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
     dragSensorRef.current = null;
     contextDragKeyRef.current = null;
     endThreadContextDrag();
+    clearFolderRowDropTarget();
     if (started) {
       listMotionRef.current?.release();
       setDragState(null);
@@ -2241,8 +2245,70 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
       },
     );
   })();
+  // An unfiled active row dragged over a folder joins it: next to the folder row
+  // under the dragged row's middle, or at the top for the folder header.
+  const folderDropAt = (
+    activeKey: string,
+    rect: { readonly top: number; readonly height: number } | null,
+  ) => {
+    const list = threadListRef.current;
+    if (list === null || rect === null || isContextDrag) return null;
+    if (activeKey in folderIdByThreadKey || sectionByThreadKey.get(activeKey) !== "active") {
+      return null;
+    }
+    const y = rect.top + rect.height / 2;
+    for (const node of list.querySelectorAll<HTMLElement>(
+      "[data-folder-header], [data-folder-row]",
+    )) {
+      const box = node.getBoundingClientRect();
+      if (y < box.top || y >= box.bottom) continue;
+      const group = activeFolderGroups.find(
+        (candidate) =>
+          candidate.folder.id === (node.dataset.folderHeader ?? node.dataset.folderRow),
+      );
+      if (group === undefined) return null;
+      const order = group.threads.map(threadShellKey);
+      if (node.dataset.folderHeader !== undefined) {
+        return {
+          folderId: group.folder.id,
+          targetKey: `folder-header:${group.folder.id}`,
+          edge: "before" as const,
+          order: [activeKey, ...order],
+        };
+      }
+      const targetKey = node.dataset.threadItem ?? "";
+      const edge = y < box.top + box.height / 2 ? ("before" as const) : ("after" as const);
+      return {
+        folderId: group.folder.id,
+        targetKey,
+        edge,
+        order: placeInFolderOrder(order, activeKey, targetKey, edge),
+      };
+    }
+    return null;
+  };
+  const handleThreadDragMove = (event: DragMoveEvent) => {
+    const target = folderDropAt(String(event.active.id), event.active.rect.current.translated);
+    const next = {
+      targetKey: target?.targetKey ?? null,
+      edge: target?.edge ?? "before",
+      folderId: target?.folderId ?? null,
+    };
+    const current = useFolderRowDropTarget.getState();
+    if (current.targetKey !== next.targetKey || current.edge !== next.edge) {
+      useFolderRowDropTarget.setState(next);
+    }
+  };
   const handleThreadDragEnd = (event: DragEndEvent) => {
     const activeKey = String(event.active.id);
+    const folderTarget = folderDropAt(activeKey, event.active.rect.current.translated);
+    clearFolderRowDropTarget();
+    if (folderTarget !== null) {
+      useSidebarFolderStore
+        .getState()
+        .placeThreadInFolder(activeKey, folderTarget.folderId, folderTarget.order);
+      return;
+    }
     const activeSection = sectionByThreadKey.get(activeKey);
     const target =
       event.over === null
@@ -3625,6 +3691,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                   collisionDetection={dndCollisionDetection}
                   modifiers={dndModifiers}
                   onDragStart={handleThreadDragStart}
+                  onDragMove={handleThreadDragMove}
                   onDragOver={handleThreadDragOver}
                   onDragEnd={handleThreadDragEnd}
                 >
