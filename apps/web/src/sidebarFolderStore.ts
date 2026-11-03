@@ -3,6 +3,11 @@ import { create } from "zustand";
 
 import { parseFolderMenuAction } from "./components/threadActionMenu.logic";
 import { requestFolderDetails } from "./sidebarFolderNameRequest";
+import {
+  applyFolderDirective,
+  folderDirectiveHash,
+  type SidebarFolderDirective,
+} from "./sidebarFolderDirective.logic";
 
 import {
   EMPTY_SIDEBAR_FOLDER_STATE,
@@ -75,6 +80,8 @@ interface SidebarFolderStore extends SidebarFolderState {
     folderId: string,
     order: ReadonlyArray<string>,
   ) => void;
+  /** Files threads as an agent's folder block asks, creating its folder when missing. */
+  readonly applyDirective: (directive: SidebarFolderDirective, environmentId: string) => void;
 }
 
 function pickState(store: SidebarFolderStore): SidebarFolderState {
@@ -89,6 +96,8 @@ function pickState(store: SidebarFolderStore): SidebarFolderState {
   };
 }
 
+const newFolderId = () => Hex.encode(globalThis.crypto.getRandomValues(new Uint8Array(12)));
+
 export const useSidebarFolderStore = create<SidebarFolderStore>()((set, get) => {
   const apply = (update: (state: SidebarFolderState) => SidebarFolderState) => {
     const current = pickState(get());
@@ -101,7 +110,7 @@ export const useSidebarFolderStore = create<SidebarFolderStore>()((set, get) => 
     ...readPersistedFolders(),
     createFolder: (name, color) => {
       if (normalizeFolderName(name) === null) return null;
-      const id = Hex.encode(globalThis.crypto.getRandomValues(new Uint8Array(12)));
+      const id = newFolderId();
       apply((state) =>
         createFolder(state, color === undefined ? { id, name } : { id, name, color }),
       );
@@ -125,6 +134,10 @@ export const useSidebarFolderStore = create<SidebarFolderStore>()((set, get) => 
     placeThreadInFolder: (threadKey, folderId, order) =>
       apply((state) =>
         setFolderThreadOrder(moveThreadsToFolder(state, [threadKey], folderId), folderId, order),
+      ),
+    applyDirective: (directive, environmentId) =>
+      apply((state) =>
+        applyFolderDirective(state, directive, { environmentId, newFolderId: newFolderId() }),
       ),
     forgetDraft: (draftId) =>
       apply((state) => {
@@ -172,4 +185,39 @@ export async function requestNewFolder(): Promise<string | null> {
   return details === null
     ? null
     : useSidebarFolderStore.getState().createFolder(details.name, details.color);
+}
+
+const APPLIED_DIRECTIVES_STORAGE_KEY = "t3code:sidebar-folder-directives:v1";
+const APPLIED_DIRECTIVES_LIMIT = 500;
+
+/**
+ * Applies an agent's folder block once per thread and block text, so reopening the thread
+ * later does not undo folder changes made since.
+ */
+export function applyFolderDirectiveOnce(
+  directive: SidebarFolderDirective,
+  input: { readonly threadKey: string; readonly environmentId: string; readonly code: string },
+): void {
+  if (typeof window === "undefined") return;
+  const key = `${input.threadKey}:${folderDirectiveHash(input.code)}`;
+  let applied: string[] = [];
+  try {
+    const parsed: unknown = JSON.parse(
+      window.localStorage.getItem(APPLIED_DIRECTIVES_STORAGE_KEY) ?? "[]",
+    );
+    if (Array.isArray(parsed)) {
+      applied = parsed.filter((entry): entry is string => typeof entry === "string");
+    }
+  } catch {}
+  if (applied.includes(key)) return;
+  try {
+    window.localStorage.setItem(
+      APPLIED_DIRECTIVES_STORAGE_KEY,
+      JSON.stringify([...applied, key].slice(-APPLIED_DIRECTIVES_LIMIT)),
+    );
+  } catch {
+    // Without a record the block would apply again on every render.
+    return;
+  }
+  useSidebarFolderStore.getState().applyDirective(directive, input.environmentId);
 }

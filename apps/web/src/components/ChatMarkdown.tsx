@@ -219,6 +219,11 @@ import {
   nodeToPlainText,
 } from "./chat/MarkdownCodeBlock.logic";
 import { reportMarkdownActionFailure } from "./chat/markdownActionFailure";
+import { SidebarFolderDirectiveCard } from "./chat/SidebarFolderDirectiveCard";
+import {
+  parseFolderDirective,
+  SIDEBAR_FOLDER_DIRECTIVE_LANGUAGE,
+} from "../sidebarFolderDirective.logic";
 
 const isAssetNotFoundError = Schema.is(AssetWorkspaceAssetNotFoundError);
 
@@ -248,6 +253,8 @@ interface ChatMarkdownProps {
       `cwd`'s; without it a private repository's uploads load unauthenticated and 404. */
   sourceControlMedia?: boolean | undefined;
   headingLevelOffset?: number | undefined;
+  /** Agent replies only: a `t3-folders` block files threads in a sidebar folder. */
+  folderDirectives?: boolean | undefined;
 }
 
 export interface ChatMarkdownContextReference {
@@ -504,6 +511,7 @@ function useChatMarkdownState({
   renderContextReference,
   headingLevelOffset = 0,
   sourceControlMedia = false,
+  folderDirectives = false,
 }: ChatMarkdownProps) {
   const resolvedTheme = useRenderedAppearance();
   const markdownRef = useRef<HTMLElement>(null);
@@ -900,6 +908,7 @@ function useChatMarkdownState({
     environmentId,
     expandMedia,
     fileLinkChip,
+    folderDirectives,
     sourceControlMedia,
     renderContextReference,
     headingLevelOffset,
@@ -1572,6 +1581,8 @@ const CHAT_MARKDOWN_COMPONENTS = {
       onRunShellCommand,
       inline,
       mathEnabled,
+      folderDirectives,
+      threadRef,
     } = use(ChatMarkdownRendererContext);
     const text = use(ChatMarkdownTextContext);
     const codeBlock = extractCodeBlock(children);
@@ -1580,6 +1591,20 @@ const CHAT_MARKDOWN_COMPONENTS = {
     }
 
     const language = extractFenceLanguage(codeBlock.className);
+    const folderDirective =
+      folderDirectives && threadRef && language === SIDEBAR_FOLDER_DIRECTIVE_LANGUAGE
+        ? parseFolderDirective(codeBlock.code)
+        : null;
+    if (folderDirective !== null && threadRef) {
+      return (
+        <SidebarFolderDirectiveCard
+          directive={folderDirective}
+          code={codeBlock.code}
+          threadRef={threadRef}
+          complete={!isStreaming || isClosedCodeFence(node, text, codeBlock.code)}
+        />
+      );
+    }
     if (
       mathEnabled &&
       language === "math" &&
