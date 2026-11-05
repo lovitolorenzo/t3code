@@ -1243,6 +1243,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
     }
     useSidebarFolderStore.getState().deleteFolder(folderId);
   });
+  const [renamingFolderId, setRenamingFolderId] = useState<string | null>(null);
 
   const {
     workingShelfEnabled,
@@ -2975,6 +2976,52 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
       }
     },
   );
+  const handleFolderHeaderContextMenu = useStableCallback(
+    (
+      folderId: string,
+      threads: readonly EnvironmentThreadShell[],
+      position: { x: number; y: number },
+    ) => {
+      void (async () => {
+        const api = readLocalApi();
+        const folder = useSidebarFolderStore.getState().folders.find((f) => f.id === folderId);
+        if (!api || !folder) return;
+        const clicked = await settlePromise(() =>
+          api.contextMenu.show(
+            [
+              { id: "new-thread", label: "New thread", icon: "message-square-plus" },
+              { id: "rename", label: "Rename folder", icon: "pencil", separatorBefore: true },
+              { id: "edit", label: "Edit folder...", icon: "settings" },
+              {
+                id: "delete",
+                label: "Delete folder",
+                icon: "trash",
+                destructive: true,
+                separatorBefore: true,
+              },
+            ] as const,
+            position,
+          ),
+        );
+        if (clicked._tag === "Failure") return;
+        switch (clicked.value) {
+          case "new-thread":
+            void handleNewThreadInFolder(folderId, threads);
+            return;
+          case "rename":
+            setRenamingFolderId(folderId);
+            return;
+          case "edit":
+            void handleEditFolder(folderId);
+            return;
+          case "delete":
+            void handleDeleteFolder(folderId, folder.name);
+            return;
+        }
+      })();
+    },
+  );
+
   // A folder row dropped on another folder row joins that folder at the drop point.
   const handleFolderRowDrop = useStableCallback(
     (draggedKey: string, targetKey: string, edge: "before" | "after") => {
@@ -3531,6 +3578,22 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                                   }
                                   onNewThread={() =>
                                     void handleNewThreadInFolder(group.folder.id, group.threads)
+                                  }
+                                  renaming={renamingFolderId === group.folder.id}
+                                  onStartRename={() => setRenamingFolderId(group.folder.id)}
+                                  onRename={(name) => {
+                                    useSidebarFolderStore
+                                      .getState()
+                                      .renameFolder(group.folder.id, name);
+                                    setRenamingFolderId(null);
+                                  }}
+                                  onCancelRename={() => setRenamingFolderId(null)}
+                                  onContextMenu={(position) =>
+                                    handleFolderHeaderContextMenu(
+                                      group.folder.id,
+                                      group.threads,
+                                      position,
+                                    )
                                   }
                                   onDropThread={(draggedKey) =>
                                     useSidebarFolderStore

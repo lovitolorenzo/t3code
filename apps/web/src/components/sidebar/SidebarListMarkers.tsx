@@ -2,7 +2,13 @@ import { CollapsibleSectionHeader } from "../ui/collapsible-section-header";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { FolderClosedIcon, PlusIcon } from "lucide-react";
-import { type DOMAttributes, type ReactNode } from "react";
+import {
+  type DOMAttributes,
+  type KeyboardEvent as ReactKeyboardEvent,
+  type ReactNode,
+  useRef,
+  useState,
+} from "react";
 import { cn } from "~/lib/utils";
 import { useClientSettings } from "../../hooks/useSettings";
 import {
@@ -177,6 +183,11 @@ export function SidebarFolderGroupHeader(props: {
   onNewThread: () => void;
   /** A thread dropped on the header moves to the top of this folder. */
   onDropThread: (draggedKey: string) => void;
+  renaming: boolean;
+  onStartRename: () => void;
+  onRename: (name: string) => void;
+  onCancelRename: () => void;
+  onContextMenu: (position: { x: number; y: number }) => void;
 }) {
   const marker = `folder-header:${props.folderId}` as const;
   const isDropTarget = useFolderRowDropTarget((state) => state.targetKey === marker);
@@ -210,30 +221,105 @@ export function SidebarFolderGroupHeader(props: {
         },
       }}
     >
-      <CollapsibleSectionHeader
-        onClick={props.onToggle}
-        expanded={props.expanded}
-        tone="emphasized"
-        accessory={<span className="font-normal tabular-nums">{props.count}</span>}
-      >
-        <span className="inline-flex max-w-44 items-center gap-1.5">
+      {props.renaming ? (
+        <div className="flex h-8 items-center gap-1.5 px-2">
           <FolderClosedIcon
             aria-hidden
             className="size-3.5 shrink-0"
             style={{ color: props.color }}
           />
-          <span className="truncate">{props.name}</span>
-        </span>
-      </CollapsibleSectionHeader>
+          <FolderRenameInput
+            name={props.name}
+            onCommit={props.onRename}
+            onCancel={props.onCancelRename}
+          />
+        </div>
+      ) : (
+        <CollapsibleSectionHeader
+          onClick={props.onToggle}
+          onKeyDown={(event) => {
+            if (event.key !== "F2") return;
+            event.preventDefault();
+            props.onStartRename();
+          }}
+          onContextMenu={(event) => {
+            event.preventDefault();
+            props.onContextMenu({ x: event.clientX, y: event.clientY });
+          }}
+          expanded={props.expanded}
+          tone="emphasized"
+          accessory={<span className="font-normal tabular-nums">{props.count}</span>}
+        >
+          <span className="inline-flex max-w-44 items-center gap-1.5">
+            <FolderClosedIcon
+              aria-hidden
+              className="size-3.5 shrink-0"
+              style={{ color: props.color }}
+            />
+            <span
+              className="truncate"
+              onDoubleClick={(event) => {
+                event.stopPropagation();
+                props.onStartRename();
+              }}
+            >
+              {props.name}
+            </span>
+          </span>
+        </CollapsibleSectionHeader>
+      )}
       {/* A sibling of the toggle, since a button cannot hold another button. */}
-      <button
-        type="button"
-        aria-label={`New thread in folder ${props.name}`}
-        onClick={props.onNewThread}
-        className="absolute inset-y-1 right-10 inline-flex w-6 cursor-pointer items-center justify-center rounded-md bg-sidebar text-sidebar-muted-foreground opacity-0 outline-none transition-opacity hover:text-sidebar-foreground focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring group-any-hover/folder-header:opacity-100"
-      >
-        <PlusIcon aria-hidden className="size-3.5" />
-      </button>
+      {props.renaming ? null : (
+        <button
+          type="button"
+          aria-label={`New thread in folder ${props.name}`}
+          onClick={props.onNewThread}
+          className="absolute inset-y-1 right-10 inline-flex w-6 cursor-pointer items-center justify-center rounded-md bg-sidebar text-sidebar-muted-foreground opacity-0 outline-none transition-opacity hover:text-sidebar-foreground focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring group-any-hover/folder-header:opacity-100"
+        >
+          <PlusIcon aria-hidden className="size-3.5" />
+        </button>
+      )}
     </SortableSidebarMarker>
+  );
+}
+
+// Mounted only while renaming, so each rename starts from the current name.
+function FolderRenameInput(props: {
+  name: string;
+  onCommit: (name: string) => void;
+  onCancel: () => void;
+}) {
+  const [name, setName] = useState(props.name);
+  // Enter and Escape blur the input as it unmounts; that blur must not commit again.
+  const settledRef = useRef(false);
+  const handleKeyDown = (event: ReactKeyboardEvent<HTMLInputElement>) => {
+    event.stopPropagation();
+    if (event.nativeEvent.isComposing || event.keyCode === 229) return;
+    if (event.key === "Enter") {
+      event.preventDefault();
+      settledRef.current = true;
+      props.onCommit(name);
+    } else if (event.key === "Escape") {
+      event.preventDefault();
+      settledRef.current = true;
+      props.onCancel();
+    }
+  };
+  return (
+    <input
+      autoFocus
+      value={name}
+      maxLength={80}
+      dir="auto"
+      aria-label="Folder name"
+      onChange={(event) => setName(event.target.value)}
+      onFocus={(event) => event.currentTarget.select()}
+      onKeyDown={handleKeyDown}
+      onBlur={() => {
+        if (!settledRef.current) props.onCommit(name);
+      }}
+      onPointerDown={(event) => event.stopPropagation()}
+      className="min-w-0 flex-1 rounded-sm border border-input bg-card px-1 text-xs font-medium text-card-foreground outline-none focus:border-foreground"
+    />
   );
 }
