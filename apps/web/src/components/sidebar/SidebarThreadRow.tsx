@@ -588,6 +588,8 @@ type SidebarThreadRowProps = {
         ) => void;
       }
     | undefined;
+  /** Indents the row under its folder's main thread. */
+  underFolderMain?: boolean | undefined;
   thread: SidebarThreadSummary;
   // "folder" is a one-line row inside a boring sidebar project folder;
   // "folder-multiline" adds the card's branch and PR line under it.
@@ -728,11 +730,9 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
       : (store.folders.find((candidate) => candidate.id === folderId) ?? null);
   });
   const folderColor = folder === null ? null : SIDEBAR_FOLDER_COLORS[folder.color];
-  // A folder with a main thread shows it first and its other rows indented under it.
-  const folderMainKey = useSidebarFolderStore((store) =>
-    folder === null ? undefined : store.mainThreadKeyByFolder[folder.id],
+  const isFolderMain = useSidebarFolderStore(
+    (store) => folder !== null && store.mainThreadKeyByFolder[folder.id] === threadKey,
   );
-  const isFolderMain = folderMainKey === threadKey;
   // Folder rows move with native drag, apart from the sidebar's pin and settle drag.
   const { folderDrag } = props;
   const rowDropEdge = useFolderRowDropTarget((state) =>
@@ -1579,7 +1579,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
         metaLineEmpty && "[contain-intrinsic-size:auto_58px]",
         sortable?.isDragging && "relative z-20",
         folderRowDragProps && "relative",
-        folderRowDragProps && folderMainKey !== undefined && !isFolderMain && "ps-4",
+        props.underFolderMain && "ps-4",
       )}
     >
       {folderDropEdge !== null ? (

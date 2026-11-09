@@ -2,6 +2,7 @@ import {
   createFolder,
   moveThreadsToFolder,
   normalizeFolderName,
+  setFolderMainThread,
   type SidebarFolderState,
 } from "./sidebarFolders.logic";
 
@@ -13,6 +14,8 @@ export interface SidebarFolderDirective {
   readonly folder: string | null;
   /** Thread ids, scoped thread keys, or `t3-thread://v1/<id>` links. */
   readonly threads: ReadonlyArray<string>;
+  /** One of `threads`, made the folder's main thread. */
+  readonly main?: string;
 }
 
 const THREAD_LINK_PREFIX = "t3-thread://v1/";
@@ -27,7 +30,7 @@ export function parseFolderDirective(code: string): SidebarFolderDirective | nul
     return null;
   }
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
-  const { folder, threads } = value as Record<string, unknown>;
+  const { folder, threads, main } = value as Record<string, unknown>;
   const name = typeof folder === "string" ? normalizeFolderName(folder) : null;
   if (folder !== null && name === null) return null;
   if (!Array.isArray(threads) || threads.length === 0) return null;
@@ -38,7 +41,12 @@ export function parseFolderDirective(code: string): SidebarFolderDirective | nul
     if (id.length === 0) return null;
     if (!ids.includes(id)) ids.push(id);
   }
-  return { folder: name, threads: ids };
+  if (main === undefined) return { folder: name, threads: ids };
+  // Only a folder has a main thread, and it is filed with the others.
+  const mainId = typeof main === "string" ? main.trim().replace(THREAD_LINK_PREFIX, "") : "";
+  if (name === null || mainId.length === 0) return null;
+  if (!ids.includes(mainId)) ids.push(mainId);
+  return { folder: name, threads: ids, main: mainId };
 }
 
 /** Thread keys for the directive; bare ids belong to the environment of the thread it came from. */
@@ -60,9 +68,18 @@ export function applyFolderDirective(
   const threadKeys = folderDirectiveThreadKeys(directive, input.environmentId);
   if (directive.folder === null) return moveThreadsToFolder(state, threadKeys, null);
   const existing = findFolderByName(state, directive.folder);
-  if (existing !== undefined) return moveThreadsToFolder(state, threadKeys, existing.id);
-  const withFolder = createFolder(state, { id: input.newFolderId, name: directive.folder });
-  return moveThreadsToFolder(withFolder, threadKeys, input.newFolderId);
+  const folderId = existing?.id ?? input.newFolderId;
+  const withFolder =
+    existing !== undefined
+      ? state
+      : createFolder(state, { id: input.newFolderId, name: directive.folder });
+  const filed = moveThreadsToFolder(withFolder, threadKeys, folderId);
+  if (directive.main === undefined) return filed;
+  const [mainKey] = folderDirectiveThreadKeys(
+    { folder: directive.folder, threads: [directive.main] },
+    input.environmentId,
+  );
+  return setFolderMainThread(filed, folderId, mainKey!);
 }
 
 export function findFolderByName(state: Pick<SidebarFolderState, "folders">, name: string) {

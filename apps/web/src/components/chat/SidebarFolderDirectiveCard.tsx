@@ -52,6 +52,7 @@ export function SidebarFolderDirectiveCard(props: {
           <span className="min-w-0 truncate">
             {complete ? "Moved" : "Moving"} {threads} to{" "}
             <span className="font-medium text-foreground">{folder?.name ?? directive.folder}</span>
+            {directive.main !== undefined ? ", with a main thread" : null}
           </span>
         </>
       )}
