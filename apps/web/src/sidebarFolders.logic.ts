@@ -134,6 +134,23 @@ export function deleteFolder(state: SidebarFolderState, folderId: string): Sideb
   };
 }
 
+/** Moves a folder before or after another; folder order is the order of groups and menus. */
+export function placeFolder(
+  state: SidebarFolderState,
+  folderId: string,
+  targetFolderId: string,
+  edge: "before" | "after",
+): SidebarFolderState {
+  const folder = state.folders.find((candidate) => candidate.id === folderId);
+  const rest = state.folders.filter((candidate) => candidate.id !== folderId);
+  const targetIndex = rest.findIndex((candidate) => candidate.id === targetFolderId);
+  if (!folder || folderId === targetFolderId || targetIndex < 0) return state;
+  const at = edge === "before" ? targetIndex : targetIndex + 1;
+  const folders = [...rest.slice(0, at), folder, ...rest.slice(at)];
+  if (folders.every((candidate, index) => candidate === state.folders[index])) return state;
+  return { ...state, folders };
+}
+
 /** `folderId` null takes the threads out of any folder. */
 export function moveThreadsToFolder(
   state: SidebarFolderState,
