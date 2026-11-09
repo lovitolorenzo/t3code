@@ -537,6 +537,23 @@ export const SIDEBAR_UNFILED_DROP = "unfiled";
 export const clearFolderRowDropTarget = () =>
   useFolderRowDropTarget.setState({ targetKey: null, folderId: null });
 
+/** Drag data type for a folder header moved to another place in the folder order. */
+export const SIDEBAR_FOLDER_MIME = "application/x-t3code-sidebar-folder";
+
+export function isSidebarFolderDrag(event: { dataTransfer: DataTransfer }): boolean {
+  return event.dataTransfer.types.includes(SIDEBAR_FOLDER_MIME);
+}
+
+// The header a dragged folder would land next to. Landing after a folder is marked under the
+// last row of its group, `lineKey`, since the folder moves below the whole group.
+export const useFolderHeaderDropTarget = create<{
+  readonly folderId: string | null;
+  readonly edge: "before" | "after";
+  readonly lineKey: string | null;
+}>(() => ({ folderId: null, edge: "before", lineKey: null }));
+export const clearFolderHeaderDropTarget = () =>
+  useFolderHeaderDropTarget.setState({ folderId: null, lineKey: null });
+
 type SidebarThreadRowProps = {
   /** Set for active rows in a folder group; they reorder by native drag. */
   folderDrag?:
@@ -687,9 +704,11 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
   const folderColor = folder === null ? null : SIDEBAR_FOLDER_COLORS[folder.color];
   // Folder rows move with native drag, apart from the sidebar's pin and settle drag.
   const { folderDrag } = props;
-  const folderDropEdge = useFolderRowDropTarget((state) =>
+  const rowDropEdge = useFolderRowDropTarget((state) =>
     state.targetKey === threadKey ? state.edge : null,
   );
+  const folderMovesBelow = useFolderHeaderDropTarget((state) => state.lineKey === threadKey);
+  const folderDropEdge = folderMovesBelow ? "after" : rowDropEdge;
   const edgeAt = (event: ReactDragEvent<HTMLElement>) => {
     const box = event.currentTarget.getBoundingClientRect();
     return event.clientY < box.top + box.height / 2 ? "before" : "after";
@@ -718,7 +737,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
           event.preventDefault();
           event.dataTransfer.dropEffect = "move";
           const edge = edgeAt(event);
-          if (folderDropEdge !== edge) {
+          if (rowDropEdge !== edge) {
             useFolderRowDropTarget.setState({ targetKey: threadKey, edge });
           }
         },

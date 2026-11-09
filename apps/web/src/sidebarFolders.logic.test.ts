@@ -14,6 +14,7 @@ import {
   setFolderThreadOrder,
   moveInFolderOrder,
   placeInFolderOrder,
+  placeFolder,
   toggleFolderCollapsed,
   resolveDraftFolderId,
   setDraftFolderChoice,
@@ -193,5 +194,15 @@ describe("sidebar folders", () => {
     // A row from another folder joins this one at the drop point.
     expect(placeInFolderOrder(order, "x", "a", "before")).toEqual(["x", "a", "b", "c", "d"]);
     expect(placeInFolderOrder(order, "b", "b", "after")).toBe(order);
+  });
+
+  it("moves a folder before or after another folder", () => {
+    const three = createFolder(withFolders, { id: "ops", name: "Ops" });
+    const ids = (state: typeof three) => state.folders.map((folder) => folder.id);
+    expect(ids(placeFolder(three, "ops", "ci", "before"))).toEqual(["ops", "ci", "docs"]);
+    expect(ids(placeFolder(three, "ci", "docs", "after"))).toEqual(["docs", "ci", "ops"]);
+    expect(placeFolder(three, "ci", "docs", "before")).toBe(three);
+    expect(placeFolder(three, "ci", "ci", "after")).toBe(three);
+    expect(placeFolder(three, "ci", "missing", "after")).toBe(three);
   });
 });

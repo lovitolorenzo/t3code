@@ -4,6 +4,7 @@ import { CSS } from "@dnd-kit/utilities";
 import { FolderClosedIcon, PlusIcon } from "lucide-react";
 import {
   type DOMAttributes,
+  type DragEvent as ReactDragEvent,
   type KeyboardEvent as ReactKeyboardEvent,
   type ReactNode,
   useRef,
@@ -17,10 +18,14 @@ import {
   type SidebarListMarker,
 } from "../Sidebar.logic";
 import {
+  clearFolderHeaderDropTarget,
   clearFolderRowDropTarget,
+  isSidebarFolderDrag,
   isSidebarFolderRowDrag,
+  SIDEBAR_FOLDER_MIME,
   SIDEBAR_FOLDER_ROW_MIME,
   SIDEBAR_SORTABLE_DRAG_DISABLED,
+  useFolderHeaderDropTarget,
   useFolderRowDropTarget,
 } from "./SidebarThreadRow";
 import { SidebarThreadUndoNotice } from "./SidebarThreadUndoNotice";
@@ -188,9 +193,20 @@ export function SidebarFolderGroupHeader(props: {
   onRename: (name: string) => void;
   onCancelRename: () => void;
   onContextMenu: (position: { x: number; y: number }) => void;
+  /** Another folder dropped on the header moves before or after this one. */
+  onDropFolder: (draggedFolderId: string, edge: "before" | "after") => void;
+  /** The group's last shown row, where a folder dropped after this one is marked. */
+  lastRowKey: string | null;
 }) {
   const marker = `folder-header:${props.folderId}` as const;
   const isDropTarget = useFolderRowDropTarget((state) => state.targetKey === marker);
+  const folderDropEdge = useFolderHeaderDropTarget((state) =>
+    state.folderId === props.folderId ? state.edge : null,
+  );
+  const edgeAt = (event: ReactDragEvent<HTMLElement>) => {
+    const box = event.currentTarget.getBoundingClientRect();
+    return event.clientY < box.top + box.height / 2 ? "before" : "after";
+  };
   return (
     <SortableSidebarMarker
       marker={marker}
@@ -202,17 +218,39 @@ export function SidebarFolderGroupHeader(props: {
       )}
       dropHandlers={{
         onDragOver: (event) => {
+          if (isSidebarFolderDrag(event)) {
+            event.preventDefault();
+            event.dataTransfer.dropEffect = "move";
+            const edge = edgeAt(event);
+            if (folderDropEdge !== edge) {
+              useFolderHeaderDropTarget.setState({
+                folderId: props.folderId,
+                edge,
+                lineKey: edge === "after" ? props.lastRowKey : null,
+              });
+            }
+            return;
+          }
           if (!isSidebarFolderRowDrag(event)) return;
           event.preventDefault();
           event.dataTransfer.dropEffect = "move";
           if (!isDropTarget) useFolderRowDropTarget.setState({ targetKey: marker });
         },
         onDragLeave: (event) => {
-          if (!event.currentTarget.contains(event.relatedTarget as Node | null) && isDropTarget) {
-            clearFolderRowDropTarget();
-          }
+          if (event.currentTarget.contains(event.relatedTarget as Node | null)) return;
+          if (isDropTarget) clearFolderRowDropTarget();
+          if (folderDropEdge !== null) clearFolderHeaderDropTarget();
         },
         onDrop: (event) => {
+          if (isSidebarFolderDrag(event)) {
+            event.preventDefault();
+            clearFolderHeaderDropTarget();
+            const draggedFolderId = event.dataTransfer.getData(SIDEBAR_FOLDER_MIME);
+            if (draggedFolderId && draggedFolderId !== props.folderId) {
+              props.onDropFolder(draggedFolderId, edgeAt(event));
+            }
+            return;
+          }
           if (!isSidebarFolderRowDrag(event)) return;
           event.preventDefault();
           clearFolderRowDropTarget();
@@ -221,6 +259,16 @@ export function SidebarFolderGroupHeader(props: {
         },
       }}
     >
+      {folderDropEdge === "before" || (folderDropEdge === "after" && props.lastRowKey === null) ? (
+        <span
+          aria-hidden
+          className={cn(
+            "pointer-events-none absolute inset-x-1 z-30 h-0.5 rounded-full",
+            folderDropEdge === "before" ? "top-0" : "bottom-0",
+          )}
+          style={{ backgroundColor: props.color }}
+        />
+      ) : null}
       {props.renaming ? (
         <div className="flex h-8 items-center gap-1.5 px-2">
           <FolderClosedIcon
@@ -236,6 +284,13 @@ export function SidebarFolderGroupHeader(props: {
         </div>
       ) : (
         <CollapsibleSectionHeader
+          // The header drags its folder to another place in the folder order.
+          draggable
+          onDragStart={(event) => {
+            event.dataTransfer.setData(SIDEBAR_FOLDER_MIME, props.folderId);
+            event.dataTransfer.effectAllowed = "move";
+          }}
+          onDragEnd={clearFolderHeaderDropTarget}
           onClick={props.onToggle}
           onKeyDown={(event) => {
             if (event.key !== "F2") return;

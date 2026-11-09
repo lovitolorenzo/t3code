@@ -2986,10 +2986,33 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
         const api = readLocalApi();
         const folder = useSidebarFolderStore.getState().folders.find((f) => f.id === folderId);
         if (!api || !folder) return;
+        const settling = threads.filter(
+          (thread) =>
+            thread.settledOverride !== "settled" &&
+            serverConfigs.get(thread.environmentId)?.environment.capabilities.threadSettlement ===
+              true,
+        );
+        // Up and down step over the folders the sidebar shows, not hidden empty ones.
+        const groupIndex = activeFolderGroups.findIndex((group) => group.folder.id === folderId);
+        const previousFolderId = activeFolderGroups[groupIndex - 1]?.folder.id;
+        const nextFolderId = activeFolderGroups[groupIndex + 1]?.folder.id;
         const clicked = await settlePromise(() =>
           api.contextMenu.show(
             [
               { id: "new-thread", label: "New thread", icon: "message-square-plus" },
+              {
+                id: "settle",
+                label: `Settle all (${settling.length})`,
+                icon: "circle-check",
+                disabled: settling.length === 0 || !canOperateThreads(settling),
+              },
+              {
+                id: "move-up",
+                label: "Move folder up",
+                disabled: previousFolderId === undefined,
+                separatorBefore: true,
+              },
+              { id: "move-down", label: "Move folder down", disabled: nextFolderId === undefined },
               { id: "rename", label: "Rename folder", icon: "pencil", separatorBefore: true },
               { id: "edit", label: "Edit folder...", icon: "settings" },
               {
@@ -3007,6 +3030,19 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
         switch (clicked.value) {
           case "new-thread":
             void handleNewThreadInFolder(folderId, threads);
+            return;
+          case "settle":
+            settleThreads(settling.map(threadShellKey));
+            return;
+          case "move-up":
+            if (previousFolderId !== undefined) {
+              useSidebarFolderStore.getState().placeFolder(folderId, previousFolderId, "before");
+            }
+            return;
+          case "move-down":
+            if (nextFolderId !== undefined) {
+              useSidebarFolderStore.getState().placeFolder(folderId, nextFolderId, "after");
+            }
             return;
           case "rename":
             setRenamingFolderId(folderId);
@@ -3594,6 +3630,14 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                                       group.threads,
                                       position,
                                     )
+                                  }
+                                  lastRowKey={
+                                    group.visibleThreads.map(threadShellKey).at(-1) ?? null
+                                  }
+                                  onDropFolder={(draggedFolderId, edge) =>
+                                    useSidebarFolderStore
+                                      .getState()
+                                      .placeFolder(draggedFolderId, group.folder.id, edge)
                                   }
                                   onDropThread={(draggedKey) =>
                                     useSidebarFolderStore

@@ -18,6 +18,7 @@ import {
   nextFolderColor,
   normalizeFolderName,
   parseSidebarFolderState,
+  placeFolder,
   renameFolder,
   setActiveFolder,
   setDraftFolderChoice,
@@ -65,6 +66,11 @@ interface SidebarFolderStore extends SidebarFolderState {
   readonly editFolder: (folderId: string, name: string, color: SidebarFolderColor) => void;
   /** A blank name keeps the current one. */
   readonly renameFolder: (folderId: string, name: string) => void;
+  readonly placeFolder: (
+    folderId: string,
+    targetFolderId: string,
+    edge: "before" | "after",
+  ) => void;
   readonly deleteFolder: (folderId: string) => void;
   readonly moveThreads: (threadKeys: ReadonlyArray<string>, folderId: string | null) => void;
   readonly setActiveFolder: (folderId: string | null) => void;
@@ -121,6 +127,8 @@ export const useSidebarFolderStore = create<SidebarFolderStore>()((set, get) => 
     editFolder: (folderId, name, color) =>
       apply((state) => setFolderColor(renameFolder(state, folderId, name), folderId, color)),
     renameFolder: (folderId, name) => apply((state) => renameFolder(state, folderId, name)),
+    placeFolder: (folderId, targetFolderId, edge) =>
+      apply((state) => placeFolder(state, folderId, targetFolderId, edge)),
     deleteFolder: (folderId) => apply((state) => deleteFolder(state, folderId)),
     moveThreads: (threadKeys, folderId) =>
       apply((state) => moveThreadsToFolder(state, threadKeys, folderId)),
