@@ -415,6 +415,7 @@ function useSidebarThreads(input: {
     readonly folderIdByThreadKey: Readonly<Record<string, string>>;
     readonly collapsedFolderIds: ReadonlyArray<string>;
     readonly threadOrderByFolder: Readonly<Record<string, ReadonlyArray<string>>>;
+    readonly mainThreadKeyByFolder: Readonly<Record<string, string>>;
   };
 }) {
   const {
@@ -508,6 +509,7 @@ function useSidebarThreads(input: {
     folderGrouping.folders,
     folderGrouping.folderIdByThreadKey,
     folderGrouping.threadOrderByFolder,
+    folderGrouping.mainThreadKeyByFolder,
   );
   // A closed folder still lists the open thread, as a closed shelf does.
   const activeFolderGroups = activeByFolder.groups.map((group) => {
@@ -1015,6 +1017,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
   const sidebarFolders = useSidebarFolderStore((store) => store.folders);
   const collapsedFolderIds = useSidebarFolderStore((store) => store.collapsedFolderIds);
   const threadOrderByFolder = useSidebarFolderStore((store) => store.threadOrderByFolder);
+  const mainThreadKeyByFolder = useSidebarFolderStore((store) => store.mainThreadKeyByFolder);
   const folderIdByThreadKey = useSidebarFolderStore((store) => store.folderIdByThreadKey);
   const activeFolderId = useSidebarFolderStore((store) => store.activeFolderId);
   const setActiveFolder = useSidebarFolderStore((store) => store.setActiveFolder);
@@ -1293,6 +1296,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
       folderIdByThreadKey,
       collapsedFolderIds,
       threadOrderByFolder,
+      mainThreadKeyByFolder,
     },
   });
   const dismissedSuggestionByThreadKey = useSidebarFolderStore(
@@ -2662,6 +2666,9 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
               folders: {
                 items: useSidebarFolderStore.getState().folders,
                 currentId: useSidebarFolderStore.getState().folderIdByThreadKey[threadKey] ?? null,
+                isMain: Object.values(
+                  useSidebarFolderStore.getState().mainThreadKeyByFolder,
+                ).includes(threadKey),
               },
               ...(folderOrder.length > 1
                 ? {
@@ -2996,9 +3003,14 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
         const groupIndex = activeFolderGroups.findIndex((group) => group.folder.id === folderId);
         const previousFolderId = activeFolderGroups[groupIndex - 1]?.folder.id;
         const nextFolderId = activeFolderGroups[groupIndex + 1]?.folder.id;
+        const mainKey = useSidebarFolderStore.getState().mainThreadKeyByFolder[folderId];
+        const mainThread = threads.find((thread) => threadShellKey(thread) === mainKey);
         const clicked = await settlePromise(() =>
           api.contextMenu.show(
             [
+              ...(mainThread
+                ? [{ id: "open-main" as const, label: "Open main thread", icon: "crown" }]
+                : []),
               { id: "new-thread", label: "New thread", icon: "message-square-plus" },
               {
                 id: "settle",
@@ -3028,6 +3040,10 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
         );
         if (clicked._tag === "Failure") return;
         switch (clicked.value) {
+          case "open-main":
+            if (mainThread)
+              navigateToThread(scopeThreadRef(mainThread.environmentId, mainThread.id));
+            return;
           case "new-thread":
             void handleNewThreadInFolder(folderId, threads);
             return;

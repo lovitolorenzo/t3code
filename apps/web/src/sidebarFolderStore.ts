@@ -23,6 +23,7 @@ import {
   setActiveFolder,
   setDraftFolderChoice,
   setFolderColor,
+  setFolderMainThread,
   setFolderThreadOrder,
   settlePromotedDraft,
   toggleFolderCollapsed,
@@ -55,6 +56,7 @@ function persistFolders(state: SidebarFolderState): void {
         dismissedSuggestionByThreadKey: state.dismissedSuggestionByThreadKey,
         collapsedFolderIds: state.collapsedFolderIds,
         threadOrderByFolder: state.threadOrderByFolder,
+        mainThreadKeyByFolder: state.mainThreadKeyByFolder,
       } satisfies SidebarFolderState),
     );
   } catch {}
@@ -88,6 +90,8 @@ interface SidebarFolderStore extends SidebarFolderState {
     folderId: string,
     order: ReadonlyArray<string>,
   ) => void;
+  /** `threadKey` null leaves the folder without a main thread. */
+  readonly setMainThread: (folderId: string, threadKey: string | null) => void;
   /** Files threads as an agent's folder block asks, creating its folder when missing. */
   readonly applyDirective: (directive: SidebarFolderDirective, environmentId: string) => void;
 }
@@ -101,6 +105,7 @@ function pickState(store: SidebarFolderStore): SidebarFolderState {
     dismissedSuggestionByThreadKey: store.dismissedSuggestionByThreadKey,
     collapsedFolderIds: store.collapsedFolderIds,
     threadOrderByFolder: store.threadOrderByFolder,
+    mainThreadKeyByFolder: store.mainThreadKeyByFolder,
   };
 }
 
@@ -146,6 +151,8 @@ export const useSidebarFolderStore = create<SidebarFolderStore>()((set, get) => 
       apply((state) =>
         setFolderThreadOrder(moveThreadsToFolder(state, [threadKey], folderId), folderId, order),
       ),
+    setMainThread: (folderId, threadKey) =>
+      apply((state) => setFolderMainThread(state, folderId, threadKey)),
     applyDirective: (directive, environmentId) =>
       apply((state) =>
         applyFolderDirective(state, directive, { environmentId, newFolderId: newFolderId() }),
@@ -175,6 +182,18 @@ export async function applyFolderMenuAction(
   action: string,
   threadKeys: ReadonlyArray<string>,
 ): Promise<boolean> {
+  if (action === "folder-main") {
+    const store = useSidebarFolderStore.getState();
+    const [threadKey] = threadKeys;
+    const folderId = threadKey === undefined ? undefined : store.folderIdByThreadKey[threadKey];
+    if (threadKey !== undefined && folderId !== undefined) {
+      store.setMainThread(
+        folderId,
+        store.mainThreadKeyByFolder[folderId] === threadKey ? null : threadKey,
+      );
+    }
+    return true;
+  }
   const parsed = parseFolderMenuAction(action);
   if (parsed === null) return false;
   if (parsed.kind === "move") {

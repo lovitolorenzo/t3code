@@ -62,6 +62,7 @@ import { stackedThreadToast, toastManager } from "../ui/toast";
 import { newMessageId, newThreadId } from "~/lib/utils";
 import { useNewThreadHandler } from "../../hooks/useHandleNewThread";
 import { buildThreadRouteParams } from "../../threadRoutes";
+import { folderMainContextFor } from "../../sidebarFolderMainContext";
 import {
   beginBackgroundDraftSubmissionByRef,
   clearBackgroundDraftSubmissionByRef,
@@ -828,7 +829,12 @@ export function useComposerSend(input: ComposerSendInput) {
       model: ctxSelectedModel,
       models: ctxSelectedProviderModels,
       effort: ctxSelectedPromptEffort,
-      text: messageTextForSend || ATTACHMENT_ONLY_BOOTSTRAP_PROMPT,
+      text:
+        (messageTextForSend || ATTACHMENT_ONLY_BOOTSTRAP_PROMPT) +
+        // A folder's main thread gets the folder's thread list; slash commands stay bare.
+        (isServerThread && !messageTextForSend.startsWith("/")
+          ? folderMainContextFor(scopeThreadRef(activeThread.environmentId, activeThread.id))
+          : ""),
     });
     if (composerRef.current?.validateProviderInput(outgoingMessageText) === false) {
       return;

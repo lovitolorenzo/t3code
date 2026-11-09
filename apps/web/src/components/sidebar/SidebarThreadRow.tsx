@@ -38,6 +38,7 @@ import {
   CircleDashedIcon,
   CircleDotDashedIcon,
   ClockIcon,
+  CrownIcon,
   FolderClosedIcon,
   FolderPlusIcon,
   GitBranchIcon,
@@ -702,6 +703,11 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
       : (store.folders.find((candidate) => candidate.id === folderId) ?? null);
   });
   const folderColor = folder === null ? null : SIDEBAR_FOLDER_COLORS[folder.color];
+  // A folder with a main thread shows it first and its other rows indented under it.
+  const folderMainKey = useSidebarFolderStore((store) =>
+    folder === null ? undefined : store.mainThreadKeyByFolder[folder.id],
+  );
+  const isFolderMain = folderMainKey === threadKey;
   // Folder rows move with native drag, apart from the sidebar's pin and settle drag.
   const { folderDrag } = props;
   const rowDropEdge = useFolderRowDropTarget((state) =>
@@ -1447,6 +1453,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
         metaLineEmpty && "redesign:[contain-intrinsic-size:auto_58px]",
         sortable?.isDragging && "relative z-20",
         folderRowDragProps && "relative",
+        folderRowDragProps && folderMainKey !== undefined && !isFolderMain && "ps-4",
       )}
     >
       {folderDropEdge !== null ? (
@@ -1535,7 +1542,11 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
                   className="inline-flex max-w-[45%] min-w-0 shrink items-center gap-1 text-xs"
                   style={{ color: folderColor }}
                 >
-                  <FolderClosedIcon aria-hidden className="size-3 shrink-0" />
+                  {isFolderMain ? (
+                    <CrownIcon aria-label="Main thread" className="size-3 shrink-0" />
+                  ) : (
+                    <FolderClosedIcon aria-hidden className="size-3 shrink-0" />
+                  )}
                   <span className="truncate">{folder.name}</span>
                 </span>
               ) : null}

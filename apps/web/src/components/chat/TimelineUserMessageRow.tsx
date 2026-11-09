@@ -20,9 +20,11 @@ import {
   isVideoAttachment,
 } from "../../types";
 import ChatMarkdown from "../ChatMarkdown";
+import { splitFolderMainContext } from "../../sidebarFolderMain.logic";
 import {
   CalendarClockIcon,
   ChevronDownIcon,
+  CrownIcon,
   DownloadIcon,
   EyeIcon,
   type LucideIcon,
@@ -316,10 +318,13 @@ function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" 
   const resolvedContext = resolveUserMessageContext(
     userMessage.attribution === "guest" ? { ...row.message, text: userMessage.text } : row.message,
   );
+  // A folder's main thread sends the folder's thread list with each message; it shows as a chip.
+  const folderMain = splitFolderMainContext(resolvedContext.text);
+  const messageText = folderMain.text;
   const previewImages = userImages.filter((image) => image.name.startsWith("preview-annotation-"));
   const revertTurnCount = row.revertTurnCount;
   const chippedAttachmentIds = new Set(
-    collectComposerContextReferences(resolvedContext.text).flatMap((occurrence) => {
+    collectComposerContextReferences(messageText).flatMap((occurrence) => {
       const record = asKnownContextRecord(resolvedContext.recordsById.get(occurrence.contextId));
       return record?.kind === "file" || record?.kind === "image" ? [record.attachmentId] : [];
     }),
@@ -329,10 +334,7 @@ function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" 
   const annotationRecordIds = resolvedContext.records
     .filter((record) => record.kind === "preview-annotation")
     .map((record) => record.contextId);
-  const plainText = replaceComposerContextReferences(
-    resolvedContext.text,
-    (reference) => reference.label,
-  );
+  const plainText = replaceComposerContextReferences(messageText, (reference) => reference.label);
   const promptLink = promptLinkFor(plainText);
   const foldSummary =
     plainText
@@ -617,13 +619,25 @@ function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" 
             ) : null}
             <div onCopyCapture={onBodyCopyCapture}>
               <CollapsibleUserMessageBody
-                text={resolvedContext.text}
+                text={messageText}
                 renderContextReference={renderContextReference}
                 skills={ctx.skills}
                 markdownCwd={ctx.markdownCwd}
                 collapsible={!folded}
               />
             </div>
+            {folderMain.folder !== null ? (
+              <div
+                data-thread-find-ignore
+                className="mt-2 inline-flex max-w-full items-center gap-1 rounded-sm border border-current/20 px-1.5 text-xs text-muted-foreground"
+              >
+                <CrownIcon aria-hidden className="size-3 shrink-0" />
+                <span className="truncate">
+                  Main thread of {folderMain.folder.name} · {folderMain.folder.threadCount}{" "}
+                  {folderMain.folder.threadCount === 1 ? "thread" : "threads"}
+                </span>
+              </div>
+            ) : null}
           </div>
         ) : null}
       </div>
@@ -648,9 +662,9 @@ function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" 
               {typeof revertTurnCount === "number" && (
                 <RevertUserMessageButton turnCount={revertTurnCount} messageId={row.message.id} />
               )}
-              {resolvedContext.text && (
+              {messageText && (
                 <MessageCopyButton
-                  text={contextClipboardFragment ? resolvedContext.text : plainText}
+                  text={contextClipboardFragment ? messageText : plainText}
                   {...(contextClipboardFragment
                     ? {
                         extraFlavors: {
