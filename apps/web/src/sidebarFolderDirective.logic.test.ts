@@ -20,6 +20,14 @@ describe("parseFolderDirective", () => {
     ).toEqual({ folder: "Beta issues", threads: ["t1", "t2"] });
   });
 
+  it("files the main thread with the others", () => {
+    expect(parseFolderDirective('{"folder":"Beta","threads":["t1"],"main":"t2"}')).toEqual({
+      folder: "Beta",
+      threads: ["t1", "t2"],
+      main: "t2",
+    });
+  });
+
   it("takes a null folder as leaving the folders", () => {
     expect(parseFolderDirective('{"folder":null,"threads":["t1"]}')).toEqual({
       folder: null,
@@ -34,6 +42,8 @@ describe("parseFolderDirective", () => {
     ["no threads", '{"folder":"Beta","threads":[]}'],
     ["a thread that is not a string", '{"folder":"Beta","threads":[1]}'],
     ["an array", '["Beta"]'],
+    ["a main thread without a folder", '{"folder":null,"threads":["t1"],"main":"t1"}'],
+    ["a blank main thread", '{"folder":"Beta","threads":["t1"],"main":" "}'],
   ])("rejects %s", (_label, code) => {
     expect(parseFolderDirective(code)).toBeNull();
   });
@@ -66,6 +76,15 @@ describe("applyFolderDirective", () => {
     );
     expect(next.folders.map((folder) => folder.name)).toEqual(["Beta issues", "CI"]);
     expect(next.folderIdByThreadKey).toEqual({ [`${ENV}:t1`]: "ci" });
+  });
+
+  it("makes the named thread the folder's main thread", () => {
+    const next = applyFolderDirective(
+      state,
+      { folder: "CI", threads: ["t1", "t2"], main: "t2" },
+      { environmentId: ENV, newFolderId: "ci" },
+    );
+    expect(next.mainThreadKeyByFolder).toEqual({ ci: `${ENV}:t2` });
   });
 
   it("takes threads out of their folders for a null folder", () => {

@@ -571,6 +571,15 @@ function useSidebarThreads(input: {
     visibleWorkingThreads,
     unfiledActiveThreads: activeByFolder.unfiled,
     activeFolderGroups,
+    // Rows sit indented under their folder's main thread only while its row shows above them.
+    threadKeysUnderFolderMain: new Set(
+      activeFolderGroups.flatMap((group) => {
+        const keys = group.visibleThreads.map(threadShellKey);
+        return keys[0] === folderGrouping.mainThreadKeyByFolder[group.folder.id]
+          ? keys.slice(1)
+          : [];
+      }),
+    ),
     orderedThreadKeys: orderedThreads.map(threadShellKey),
     threadByKey: new Map(orderedThreads.map((thread) => [threadShellKey(thread), thread] as const)),
     settledThreadKeys: new Set(settledThreads.map(threadShellKey)),
@@ -1275,6 +1284,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
     visibleWorkingThreads,
     unfiledActiveThreads,
     activeFolderGroups,
+    threadKeysUnderFolderMain,
     orderedThreadKeys,
     threadByKey,
     settledThreadKeys,
@@ -3498,6 +3508,9 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                                 section === "active" && threadKey in folderIdByThreadKey
                                   ? folderRowDrag
                                   : undefined
+                              }
+                              underFolderMain={
+                                section === "active" && threadKeysUnderFolderMain.has(threadKey)
                               }
                               variant={rowVariant}
                               variantAction={
