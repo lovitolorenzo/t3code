@@ -26,9 +26,11 @@ import {
   isVideoAttachment,
 } from "../../types";
 import ChatMarkdown from "../ChatMarkdown";
+import { splitFolderMainContext } from "../../sidebarFolderMain.logic";
 import {
   CalendarClockIcon,
   ChevronDownIcon,
+  CrownIcon,
   DownloadIcon,
   EyeIcon,
   type LucideIcon,
@@ -461,9 +463,12 @@ function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" 
   );
   const senderLabel = senderShell?.title.trim() || "Agent";
   const resolvedContext = resolveUserMessageContext({ ...row.message, text: userMessage.text });
+  // A folder's main thread sends the folder's thread list with each message; it shows as a chip.
+  const folderMain = splitFolderMainContext(resolvedContext.text);
+  const messageText = folderMain.text;
   const previewImages = userImages.filter((image) => image.name.startsWith("preview-annotation-"));
   const revertTurnCount = row.revertTurnCount;
-  const attachmentReferences = collectComposerContextReferences(resolvedContext.text).flatMap(
+  const attachmentReferences = collectComposerContextReferences(messageText).flatMap(
     (occurrence) => {
       const record = asKnownContextRecord(resolvedContext.recordsById.get(occurrence.contextId));
       return record?.kind === "file" || record?.kind === "image"
@@ -486,7 +491,7 @@ function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" 
   const mediaOnly =
     !folded &&
     userMessage.attribution !== "guest" &&
-    resolvedContext.text.trim() === "" &&
+    messageText.trim() === "" &&
     userAudio.length === 0 &&
     unchippedFiles.length === 0 &&
     unknownAttachments.length === 0 &&
@@ -517,7 +522,7 @@ function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" 
     userMessage.attribution !== "guest" &&
     otherUserFiles.length > 0 &&
     regularImages.length + userVideos.length + userAudio.length + unknownAttachments.length === 0 &&
-    replaceComposerContextReferences(resolvedContext.text, (reference) =>
+    replaceComposerContextReferences(messageText, (reference) =>
       attachmentReferences.some(
         (attached) =>
           attached.contextId === reference.contextId &&
@@ -532,7 +537,7 @@ function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" 
     userAudio.length > 0 &&
     regularImages.length + userVideos.length + otherUserFiles.length + unknownAttachments.length ===
       0 &&
-    replaceComposerContextReferences(resolvedContext.text, (reference) =>
+    replaceComposerContextReferences(messageText, (reference) =>
       attachmentReferences.some(
         (attached) =>
           attached.contextId === reference.contextId &&
@@ -544,10 +549,7 @@ function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" 
   const annotationRecordIds = resolvedContext.records
     .filter((record) => record.kind === "preview-annotation")
     .map((record) => record.contextId);
-  const plainText = replaceComposerContextReferences(
-    resolvedContext.text,
-    (reference) => reference.label,
-  );
+  const plainText = replaceComposerContextReferences(messageText, (reference) => reference.label);
   const promptLink = promptLinkFor(plainText);
   const foldSummary =
     plainText
@@ -577,8 +579,7 @@ function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" 
           },
           records: copyRecords,
         });
-  const copyText =
-    resolvedContext.text || mediaCopyRecords.map(formatComposerContextReference).join("\n");
+  const copyText = messageText || mediaCopyRecords.map(formatComposerContextReference).join("\n");
   const onBodyCopyCapture = (event: React.ClipboardEvent<HTMLDivElement>) => {
     if (resolvedContext.records.length === 0 || !event.clipboardData) return;
     const selection = window.getSelection();
@@ -890,7 +891,7 @@ function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" 
           <div
             ref={folded ? revealFoldRef : undefined}
             hidden={folded && !expanded}
-            dir={markdownProseDirection(resolvedContext.text)}
+            dir={markdownProseDirection(messageText)}
             className={cn(
               folded && "px-3 pb-3",
               folded && !ctx.findActive && "max-h-96 overflow-auto",
@@ -1005,7 +1006,7 @@ function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" 
             {fileCardsOnly || audioOnly ? null : (
               <div onCopyCapture={onBodyCopyCapture}>
                 <CollapsibleUserMessageBody
-                  text={resolvedContext.text}
+                  text={messageText}
                   renderContextReference={renderContextReference}
                   skills={ctx.skills}
                   markdownCwd={ctx.markdownCwd}
@@ -1013,6 +1014,18 @@ function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" 
                 />
               </div>
             )}
+            {folderMain.folder !== null ? (
+              <div
+                data-thread-find-ignore
+                className="mt-2 inline-flex max-w-full items-center gap-1 rounded-sm border border-current/20 px-1.5 text-xs text-muted-foreground"
+              >
+                <CrownIcon aria-hidden className="size-3 shrink-0" />
+                <span className="truncate">
+                  Main thread of {folderMain.folder.name} · {folderMain.folder.threadCount}{" "}
+                  {folderMain.folder.threadCount === 1 ? "thread" : "threads"}
+                </span>
+              </div>
+            ) : null}
           </div>
         ) : null}
         {floatActions ? (

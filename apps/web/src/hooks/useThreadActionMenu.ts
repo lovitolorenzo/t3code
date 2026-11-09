@@ -154,6 +154,9 @@ export function useThreadActionMenu(input: {
           currentId:
             useSidebarFolderStore.getState().folderIdByThreadKey[scopedThreadKey(threadRef)] ??
             null,
+          isMain: Object.values(useSidebarFolderStore.getState().mainThreadKeyByFolder).includes(
+            scopedThreadKey(threadRef),
+          ),
         },
       });
       const clicked = await settlePromise(() => api.contextMenu.show(items, position));

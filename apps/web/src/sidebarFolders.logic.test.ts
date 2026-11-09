@@ -10,6 +10,7 @@ import {
   renameFolder,
   setActiveFolder,
   setFolderColor,
+  setFolderMainThread,
   groupThreadsByFolder,
   setFolderThreadOrder,
   moveInFolderOrder,
@@ -107,6 +108,7 @@ describe("sidebar folders", () => {
       dismissedSuggestionByThreadKey: {},
       collapsedFolderIds: [],
       threadOrderByFolder: {},
+      mainThreadKeyByFolder: {},
     });
     expect(parseSidebarFolderState("garbage")).toEqual(EMPTY_SIDEBAR_FOLDER_STATE);
   });
@@ -204,5 +206,38 @@ describe("sidebar folders", () => {
     expect(placeFolder(three, "ci", "docs", "before")).toBe(three);
     expect(placeFolder(three, "ci", "ci", "after")).toBe(three);
     expect(placeFolder(three, "ci", "missing", "after")).toBe(three);
+  });
+
+  it("keeps a folder's main thread among its threads and heads its group with it", () => {
+    const filed = moveThreadsToFolder(withFolders, ["env:a", "env:b"], "ci");
+    const withMain = setFolderMainThread(filed, "ci", "env:b");
+    expect(withMain.mainThreadKeyByFolder).toEqual({ ci: "env:b" });
+    // Only a thread in the folder can lead it.
+    expect(setFolderMainThread(filed, "docs", "env:a")).toBe(filed);
+    expect(setFolderMainThread(withMain, "ci", "env:b")).toBe(withMain);
+
+    const { groups } = groupThreadsByFolder(
+      ["env:a", "env:b"],
+      (key) => key,
+      withMain.folders,
+      withMain.folderIdByThreadKey,
+      { ci: ["env:a", "env:b"] },
+      withMain.mainThreadKeyByFolder,
+    );
+    expect(groups[0]?.threads).toEqual(["env:b", "env:a"]);
+
+    // Leaving the folder or deleting it drops the main thread.
+    expect(moveThreadsToFolder(withMain, ["env:b"], "docs").mainThreadKeyByFolder).toEqual({});
+    expect(moveThreadsToFolder(withMain, ["env:a"], null).mainThreadKeyByFolder).toEqual({
+      ci: "env:b",
+    });
+    expect(deleteFolder(withMain, "ci").mainThreadKeyByFolder).toEqual({});
+    expect(setFolderMainThread(withMain, "ci", null).mainThreadKeyByFolder).toEqual({});
+    expect(
+      parseSidebarFolderState({
+        ...withMain,
+        mainThreadKeyByFolder: { ci: "env:a", docs: "env:b" },
+      }).mainThreadKeyByFolder,
+    ).toEqual({ ci: "env:a" });
   });
 });

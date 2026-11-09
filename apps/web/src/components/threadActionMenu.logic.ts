@@ -23,6 +23,7 @@ export type ThreadActionMenuId =
   | "mark-unread"
   | "folder"
   | `folder:${string}`
+  | "folder-main"
   | "folder-position"
   | `folder-position:${FolderPositionMove}`
   | "share-guest"
@@ -104,6 +105,8 @@ export interface ThreadActionMenuState {
   readonly folders?: {
     readonly items: ReadonlyArray<SidebarFolder>;
     readonly currentId: string | null;
+    /** Whether the thread is its folder's main thread. */
+    readonly isMain?: boolean;
   };
   /** Where the row sits in its folder group, when the sidebar shows one. */
   readonly folderPosition?: { readonly canMoveUp: boolean; readonly canMoveDown: boolean };
@@ -125,6 +128,20 @@ export function parseFolderMenuAction(
   const target = action.slice("folder:".length);
   if (target === "new") return { kind: "new" };
   return { kind: "move", folderId: target === "none" ? null : target };
+}
+
+/** Makes the thread its folder's main thread, or stops it being one. */
+function buildFolderMainMenuItem(
+  folders: ReadonlyArray<SidebarFolder>,
+  folderId: string,
+  isMain: boolean | undefined,
+): ContextMenuItem<"folder-main"> {
+  const name = folders.find((folder) => folder.id === folderId)?.name ?? "folder";
+  return {
+    id: "folder-main",
+    label: isMain ? `Stop being main thread of ${name}` : `Make main thread of ${name}`,
+    icon: "crown",
+  };
 }
 
 export function buildFolderMenuItem(input: {
@@ -162,7 +179,12 @@ export function buildFolderMenuItem(input: {
 
 /** Local navigation, read markers, and copying remain available to read-only clients. */
 export function threadActionRequiresOperate(action: ThreadActionMenuId): boolean {
-  if (action === "folder" || action.startsWith("folder:") || action.startsWith("folder-position")) {
+  if (
+    action === "folder" ||
+    action === "folder-main" ||
+    action.startsWith("folder:") ||
+    action.startsWith("folder-position")
+  ) {
     return false;
   }
   return ![
@@ -246,6 +268,15 @@ export function buildThreadActionMenuItems(
     { id: "mark-unread", label: "Mark unread", icon: "mail-open" },
     ...(state.folders
       ? [buildFolderMenuItem({ folders: state.folders.items, currentId: state.folders.currentId })]
+      : []),
+    ...(state.folders?.currentId != null
+      ? [
+          buildFolderMainMenuItem(
+            state.folders.items,
+            state.folders.currentId,
+            state.folders.isMain,
+          ),
+        ]
       : []),
     ...(state.folderPosition
       ? [

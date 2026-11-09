@@ -51,6 +51,8 @@ export interface SidebarFolderState {
   readonly collapsedFolderIds: ReadonlyArray<string>;
   /** The order the user dragged each folder's threads into, by thread key. */
   readonly threadOrderByFolder: Readonly<Record<string, ReadonlyArray<string>>>;
+  /** Each folder's main thread, which heads its group and coordinates the others. */
+  readonly mainThreadKeyByFolder: Readonly<Record<string, string>>;
 }
 
 export const EMPTY_SIDEBAR_FOLDER_STATE: SidebarFolderState = {
@@ -61,6 +63,7 @@ export const EMPTY_SIDEBAR_FOLDER_STATE: SidebarFolderState = {
   dismissedSuggestionByThreadKey: {},
   collapsedFolderIds: [],
   threadOrderByFolder: {},
+  mainThreadKeyByFolder: {},
 };
 
 export function normalizeFolderName(name: string): string | null {
@@ -131,6 +134,9 @@ export function deleteFolder(state: SidebarFolderState, folderId: string): Sideb
     threadOrderByFolder: Object.fromEntries(
       Object.entries(state.threadOrderByFolder).filter(([id]) => id !== folderId),
     ),
+    mainThreadKeyByFolder: Object.fromEntries(
+      Object.entries(state.mainThreadKeyByFolder).filter(([id]) => id !== folderId),
+    ),
   };
 }
 
@@ -173,7 +179,38 @@ export function moveThreadsToFolder(
       changed = true;
     }
   }
-  return changed ? { ...state, folderIdByThreadKey } : state;
+  if (!changed) return state;
+  // A main thread that leaves its folder stops being its main.
+  const mainThreadKeyByFolder = Object.fromEntries(
+    Object.entries(state.mainThreadKeyByFolder).filter(
+      ([id, threadKey]) => folderIdByThreadKey[threadKey] === id,
+    ),
+  );
+  return { ...state, folderIdByThreadKey, mainThreadKeyByFolder };
+}
+
+/** `threadKey` null leaves the folder without a main thread; the thread must be in the folder. */
+export function setFolderMainThread(
+  state: SidebarFolderState,
+  folderId: string,
+  threadKey: string | null,
+): SidebarFolderState {
+  if (!state.folders.some((candidate) => candidate.id === folderId)) return state;
+  if (threadKey === null) {
+    if (!(folderId in state.mainThreadKeyByFolder)) return state;
+    const { [folderId]: _cleared, ...mainThreadKeyByFolder } = state.mainThreadKeyByFolder;
+    return { ...state, mainThreadKeyByFolder };
+  }
+  if (
+    state.folderIdByThreadKey[threadKey] !== folderId ||
+    state.mainThreadKeyByFolder[folderId] === threadKey
+  ) {
+    return state;
+  }
+  return {
+    ...state,
+    mainThreadKeyByFolder: { ...state.mainThreadKeyByFolder, [folderId]: threadKey },
+  };
 }
 
 export function setActiveFolder(
@@ -257,8 +294,8 @@ export interface FolderThreadGroup<T> {
 /**
  * Splits a list into unfiled threads and one group per folder, in folder
  * order; empty folders get no group. Unfiled threads keep the list's order.
- * In a group, threads the user never placed come first in list order, then
- * the placed ones in the order the user dragged them into.
+ * In a group, the folder's main thread comes first, then threads the user never
+ * placed in list order, then the placed ones in the order the user dragged them into.
  */
 export function groupThreadsByFolder<T>(
   threads: ReadonlyArray<T>,
@@ -266,6 +303,7 @@ export function groupThreadsByFolder<T>(
   folders: ReadonlyArray<SidebarFolder>,
   folderIdByThreadKey: Readonly<Record<string, string>>,
   threadOrderByFolder: Readonly<Record<string, ReadonlyArray<string>>> = {},
+  mainThreadKeyByFolder: Readonly<Record<string, string>> = {},
 ): { readonly unfiled: ReadonlyArray<T>; readonly groups: ReadonlyArray<FolderThreadGroup<T>> } {
   const unfiled: T[] = [];
   const byFolder = new Map<string, T[]>(folders.map((folder) => [folder.id, []]));
@@ -284,7 +322,10 @@ export function groupThreadsByFolder<T>(
       const placed = grouped
         .filter((thread) => rank.has(keyOf(thread)))
         .toSorted((a, b) => rank.get(keyOf(a))! - rank.get(keyOf(b))!);
-      return [{ folder, threads: [...unplaced, ...placed] }];
+      const mainKey = mainThreadKeyByFolder[folder.id];
+      const main = grouped.filter((thread) => keyOf(thread) === mainKey);
+      const others = [...unplaced, ...placed].filter((thread) => keyOf(thread) !== mainKey);
+      return [{ folder, threads: [...main, ...others] }];
     }),
   };
 }
@@ -435,6 +476,14 @@ export function parseSidebarFolderState(value: unknown): SidebarFolderState {
       }
     }
   }
+  const mainThreadKeyByFolder: Record<string, string> = {};
+  if (raw.mainThreadKeyByFolder && typeof raw.mainThreadKeyByFolder === "object") {
+    for (const [folderId, threadKey] of Object.entries(raw.mainThreadKeyByFolder)) {
+      if (typeof threadKey === "string" && folderIdByThreadKey[threadKey] === folderId) {
+        mainThreadKeyByFolder[folderId] = threadKey;
+      }
+    }
+  }
   return {
     folders,
     folderIdByThreadKey,
@@ -443,5 +492,6 @@ export function parseSidebarFolderState(value: unknown): SidebarFolderState {
     dismissedSuggestionByThreadKey,
     collapsedFolderIds,
     threadOrderByFolder,
+    mainThreadKeyByFolder,
   };
 }
