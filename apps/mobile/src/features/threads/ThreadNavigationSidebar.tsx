@@ -30,6 +30,7 @@ import { scopedProjectKey, scopedThreadKey } from "../../lib/scopedEntities";
 import { useProjects, useNavigationThreadShells } from "../../state/entities";
 import { useThreadSearch } from "../../state/queries";
 import { useThreadListV2ShelfPreferences } from "./use-thread-list-v2-shelf-preferences";
+import { useThreadFolders } from "./use-thread-folders";
 import { usePendingThreadOrder } from "../../state/thread-order";
 import { threadListEnvironmentsAtom } from "../../state/server";
 import { usePendingNewTasks, type PendingNewTask } from "../../state/use-pending-new-tasks";
@@ -62,6 +63,7 @@ import {
   ThreadListV2PendingRow,
   ThreadListV2Row,
   ThreadListV2SettledShelfHeader,
+  ThreadListV2FolderHeader,
   ThreadListV2ShowMoreRow,
   ThreadListV2SnoozedShelfHeader,
   ThreadListV2WorkingShelfHeader,
@@ -293,6 +295,7 @@ function ThreadNavigationSidebarPane(
   } = listEnvironments;
   const resolveProviderInstance = useThreadRowProviderInstanceResolver(providersByEnvironmentId);
   const pendingOrder = usePendingThreadOrder(nowMinute, snoozeWakeTick);
+  const threadFolders = useThreadFolders();
   const {
     layout: threadListV2Layout,
     items: threadListV2Items,
@@ -319,6 +322,7 @@ function ThreadNavigationSidebarPane(
     snoozedShelfExpanded,
     settledShelfExpanded,
     selectedThreadKey: props.selectedThreadKey ?? null,
+    folders: threadFolders.folders,
   });
   const nextSnoozeWakeAt = threadListV2Layout.nextSnoozeWakeAt;
   useEffect(() => {
@@ -614,6 +618,10 @@ function ThreadNavigationSidebarPane(
             }
             canMoveUp={item.canMoveUp}
             canMoveDown={item.canMoveDown}
+            folders={item.folders}
+            folderId={item.folderId}
+            isFolderMain={item.isFolderMain}
+            onFolderAction={threadFolders.handleThreadFolderAction}
             onSnoozeThread={snoozeThread}
             onUnsnoozeThread={unsnoozeThread}
             onUnsettleThread={unsettleThread}
@@ -627,6 +635,20 @@ function ThreadNavigationSidebarPane(
           />
         );
       }
+      case "v2-folder":
+        return (
+          <ThreadListV2FolderHeader
+            pane="sidebar"
+            group={item.group}
+            onToggle={threadFolders.toggleFolder}
+            onMenuAction={(group, actionId) =>
+              threadFolders.handleFolderMenuAction(group, actionId, {
+                settleThread,
+                openThread: handleSelectThread,
+              })
+            }
+          />
+        );
       case "v2-working-shelf":
         return (
           <ThreadListV2WorkingShelfHeader
@@ -682,6 +704,12 @@ function ThreadNavigationSidebarPane(
     selectedProjectKey,
     onEnvironmentChange: setSelectedEnvironmentId,
     onProjectChange: setSelectedProjectKey,
+    folders: {
+      count: threadFolders.folders.folders.length,
+      onNew: () => threadFolders.promptNewFolder(),
+      onPaste: () => void threadFolders.pasteFolders(),
+      onCopy: () => void threadFolders.copyFolders(),
+    },
   });
   const nativeHeaderItems = createSidebarHeaderItems({
     filterIcon,

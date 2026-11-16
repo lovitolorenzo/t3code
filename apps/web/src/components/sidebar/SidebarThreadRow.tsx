@@ -67,7 +67,7 @@ import { useRightPanelStore } from "../../rightPanelStore";
 import { useOpenPrLink } from "../../lib/openPullRequestLink";
 import { useUiStateStore } from "../../uiStateStore";
 import { useSidebarFolderStore } from "../../sidebarFolderStore";
-import { SIDEBAR_FOLDER_COLORS } from "../../sidebarFolders.logic";
+import { SIDEBAR_FOLDER_COLORS } from "@t3tools/client-runtime/state/thread-folders";
 import { useFolderSuggestion } from "./folderSuggestionContext";
 import { useThreadSelectionStore } from "../../threadSelectionStore";
 import { useNowMinute } from "../../hooks/useNowMinute";

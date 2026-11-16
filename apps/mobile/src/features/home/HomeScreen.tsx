@@ -60,6 +60,7 @@ import {
   ThreadListV2PendingRow,
   ThreadListV2Row,
   ThreadListV2SettledShelfHeader,
+  ThreadListV2FolderHeader,
   ThreadListV2ShowMoreRow,
   ThreadListV2SnoozedShelfHeader,
   ThreadListV2WorkingShelfHeader,
@@ -74,6 +75,7 @@ import {
   type ThreadListV2ListItem,
 } from "../threads/threadListV2";
 import { useThreadListV2ShelfPreferences } from "../threads/use-thread-list-v2-shelf-preferences";
+import { useThreadFolders } from "../threads/use-thread-folders";
 import type { HomeListFilterMenuEnvironment } from "./home-list-filter-menu";
 import {
   buildHomeProjectScopes,
@@ -446,6 +448,7 @@ export function HomeScreen(props: HomeScreenProps) {
   } = listEnvironments;
   const resolveProviderInstance = useThreadRowProviderInstanceResolver(providersByEnvironmentId);
   const pendingOrder = usePendingThreadOrder(nowMinute, snoozeWakeTick);
+  const threadFolders = useThreadFolders();
   const {
     layout: threadListV2Layout,
     items: threadListV2Items,
@@ -472,6 +475,7 @@ export function HomeScreen(props: HomeScreenProps) {
     snoozedShelfExpanded,
     settledShelfExpanded,
     selectedThreadKey,
+    folders: threadFolders.folders,
   });
   const nextSnoozeWakeAt = threadListV2Layout.nextSnoozeWakeAt;
   useEffect(() => {
@@ -563,6 +567,21 @@ export function HomeScreen(props: HomeScreenProps) {
         />
       );
     }
+    if (item.type === "v2-folder") {
+      return (
+        <ThreadListV2FolderHeader
+          pane={primaryColumn ? "sidebar" : "screen"}
+          group={item.group}
+          onToggle={threadFolders.toggleFolder}
+          onMenuAction={(group, actionId) =>
+            threadFolders.handleFolderMenuAction(group, actionId, {
+              settleThread: handleSettleThread,
+              openThread: selectThread,
+            })
+          }
+        />
+      );
+    }
     if (item.type === "v2-settled-shelf") {
       return (
         <ThreadListV2SettledShelfHeader
@@ -629,6 +648,10 @@ export function HomeScreen(props: HomeScreenProps) {
         }
         canMoveUp={item.canMoveUp}
         canMoveDown={item.canMoveDown}
+        folders={item.folders}
+        folderId={item.folderId}
+        isFolderMain={item.isFolderMain}
+        onFolderAction={threadFolders.handleThreadFolderAction}
         onSnoozeThread={handleSnoozeThread}
         onUnsnoozeThread={handleUnsnoozeThread}
         onUnsettleThread={handleUnsettleThread}
@@ -732,6 +755,12 @@ export function HomeScreen(props: HomeScreenProps) {
           selectedProjectKey={props.selectedProjectKey}
           onEnvironmentChange={props.onEnvironmentChange}
           onProjectChange={props.onProjectChange}
+          folders={{
+            count: threadFolders.folders.folders.length,
+            onNew: () => threadFolders.promptNewFolder(),
+            onPaste: () => void threadFolders.pasteFolders(),
+            onCopy: () => void threadFolders.copyFolders(),
+          }}
         />
       ) : null}
     </>

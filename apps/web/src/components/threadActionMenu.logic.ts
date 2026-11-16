@@ -1,6 +1,9 @@
 import type { ContextMenuItem } from "@t3tools/contracts";
 import type { SnoozePreset } from "@t3tools/client-runtime/state/thread-settled";
-import type { FolderPositionMove, SidebarFolder } from "../sidebarFolders.logic";
+import type {
+  FolderPositionMove,
+  SidebarFolder,
+} from "@t3tools/client-runtime/state/thread-folders";
 
 export type ThreadActionMenuId =
   | "new-thread-on-branch"

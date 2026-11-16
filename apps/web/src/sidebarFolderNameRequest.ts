@@ -1,6 +1,6 @@
 import { create } from "zustand";
 
-import type { SidebarFolderColor } from "./sidebarFolders.logic";
+import type { SidebarFolderColor } from "@t3tools/client-runtime/state/thread-folders";
 
 export interface FolderDetails {
   readonly name: string;

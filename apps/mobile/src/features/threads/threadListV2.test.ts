@@ -27,6 +27,13 @@ import {
 } from "@t3tools/contracts";
 import { describe, expect, it, vi } from "vite-plus/test";
 
+import {
+  EMPTY_SIDEBAR_FOLDER_STATE,
+  createFolder,
+  moveThreadsToFolder,
+  setFolderMainThread,
+  toggleFolderCollapsed,
+} from "@t3tools/client-runtime/state/thread-folders";
 import type { PendingNewTask } from "../../state/use-pending-new-tasks";
 import { makeRawThreadShell, makeThreadShellFixture } from "../../test-fixtures";
 import { threadJumpTarget } from "../keyboard/threadKeyboardShortcuts";
@@ -1694,6 +1701,73 @@ describe("Working section beta", () => {
       "snoozed",
       "v2-settled-shelf",
       "settled",
+    ]);
+  });
+});
+
+describe("thread folders in the list", () => {
+  const folders = setFolderMainThread(
+    moveThreadsToFolder(
+      createFolder(EMPTY_SIDEBAR_FOLDER_STATE, { id: "ci", name: "CI" }),
+      [`${environmentId}:filed-a`, `${environmentId}:filed-b`, `${environmentId}:pinned`],
+      "ci",
+    ),
+    "ci",
+    `${environmentId}:filed-b`,
+  );
+  const threads = [
+    makeThread({
+      id: ThreadId.make("filed-a"),
+      title: "filed-a",
+      updatedAt: "2026-06-01T03:00:00.000Z",
+    }),
+    makeThread({
+      id: ThreadId.make("loose"),
+      title: "loose",
+      updatedAt: "2026-06-01T02:00:00.000Z",
+    }),
+    makeThread({
+      id: ThreadId.make("filed-b"),
+      title: "filed-b",
+      updatedAt: "2026-06-01T01:00:00.000Z",
+    }),
+    makeThread({ id: ThreadId.make("pinned"), title: "pinned", pinnedAt: NOW }),
+  ];
+  const list = (state: typeof folders, selectedThreadKey: string | null = null) => {
+    const layout = buildThreadListV2Items({
+      threads,
+      environmentId: null,
+      searchQuery: "",
+      now: NOW,
+      folders: state,
+      selectedThreadKey,
+    });
+    return buildThreadListV2ListItems({
+      items: layout.items,
+      pendingTasks: [],
+      folderGroups: layout.folderGroups,
+      folders: state,
+    }).map((item) =>
+      item.type === "v2-folder"
+        ? `folder:${item.group.folder.name}:${item.group.count}`
+        : item.type === "v2-thread"
+          ? `${item.item.thread.id}${item.isFolderMain ? "*" : ""}`
+          : item.type,
+    );
+  };
+
+  it("groups active threads under their folder after the unfiled ones, main thread first", () => {
+    expect(list(folders)).toEqual(["pinned", "loose", "folder:CI:2", "filed-b*", "filed-a"]);
+  });
+
+  it("keeps only the open thread of a closed folder", () => {
+    const closed = toggleFolderCollapsed(folders, "ci");
+    expect(list(closed)).toEqual(["pinned", "loose", "folder:CI:2"]);
+    expect(list(closed, `${environmentId}:filed-a`)).toEqual([
+      "pinned",
+      "loose",
+      "folder:CI:2",
+      "filed-a",
     ]);
   });
 });

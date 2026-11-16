@@ -41,6 +41,16 @@ const ICON_PATHS: Record<string, ReadonlyArray<{ tag: string; attrs: Record<stri
     },
     { tag: "path", attrs: { d: "m15 5 4 4" } },
   ],
+  "clipboard-paste": [
+    { tag: "path", attrs: { d: "M11 14h10" } },
+    { tag: "path", attrs: { d: "M16 4h2a2 2 0 0 1 2 2v1.344" } },
+    { tag: "path", attrs: { d: "m17 18 4-4-4-4" } },
+    {
+      tag: "path",
+      attrs: { d: "M8 4H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 1.793-1.113" },
+    },
+    { tag: "rect", attrs: { x: "8", y: "2", width: "8", height: "4", rx: "1" } },
+  ],
   copy: [
     { tag: "rect", attrs: { width: "14", height: "14", x: "8", y: "8", rx: "2", ry: "2" } },
     { tag: "path", attrs: { d: "M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2" } },

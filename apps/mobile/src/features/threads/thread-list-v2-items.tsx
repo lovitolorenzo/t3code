@@ -28,6 +28,11 @@ import {
 import { AuthOrchestrationOperateScope, type EnvironmentMachineKind } from "@t3tools/contracts";
 import { canSnooze, resolveSnoozePresets } from "@t3tools/client-runtime/state/thread-settled";
 import type { MenuAction } from "@react-native-menu/menu";
+import {
+  SIDEBAR_FOLDER_COLORS,
+  type SidebarFolder,
+  type SidebarFolderColor,
+} from "@t3tools/client-runtime/state/thread-folders";
 import { memo, useCallback, useMemo, useState, type ComponentProps } from "react";
 import { Pressable, useWindowDimensions, View } from "react-native";
 import type { SwipeableMethods } from "react-native-gesture-handler/ReanimatedSwipeable";
@@ -67,6 +72,7 @@ import {
   resolveThreadListV2Status,
   resolveThreadListV2ProviderDrivers,
   resolveThreadListV2SwipeActions,
+  type ThreadListV2FolderGroup,
   type ThreadListV2Status,
 } from "./threadListV2";
 import { QueuedMessageIcon } from "./queued-message-icon";
@@ -290,6 +296,98 @@ export const ThreadListV2SettledShelfHeader = memo(function ThreadListV2SettledS
   props: ThreadListV2ShelfHeaderProps,
 ) {
   return <ThreadListV2ShelfHeader {...props} kind="settled" />;
+});
+
+/** A folder's header in the active section: tap to close or open it, hold for its menu. */
+export const ThreadListV2FolderHeader = memo(function ThreadListV2FolderHeader(props: {
+  readonly pane?: "screen" | "sidebar";
+  readonly group: ThreadListV2FolderGroup;
+  readonly onToggle: (folderId: string) => void;
+  readonly onMenuAction: (group: ThreadListV2FolderGroup, actionId: string) => void;
+}) {
+  const { group } = props;
+  const sidebarPane = props.pane === "sidebar";
+  const settleCount = group.settleableThreads.length;
+  const actions = useMemo<MenuAction[]>(
+    () => [
+      ...(group.mainThread
+        ? [{ id: "open-main", title: "Open main thread", image: "crown" } satisfies MenuAction]
+        : []),
+      {
+        id: "settle",
+        title: `Settle all (${settleCount})`,
+        image: "checkmark.circle",
+        attributes: { disabled: settleCount === 0 },
+      },
+      { id: "rename", title: "Rename", image: "pencil" },
+      {
+        id: "color",
+        title: "Color",
+        image: "paintpalette",
+        subactions: (Object.keys(SIDEBAR_FOLDER_COLORS) as SidebarFolderColor[]).map((color) => ({
+          id: `color:${color}`,
+          title: color.charAt(0).toUpperCase() + color.slice(1),
+          state: color === group.folder.color ? "on" : "off",
+        })),
+      },
+      {
+        id: "delete",
+        title: "Delete folder",
+        image: "trash",
+        attributes: { destructive: true },
+      },
+    ],
+    [group.mainThread, group.folder.color, settleCount],
+  );
+  return (
+    <Menu
+      actions={actions}
+      onPressAction={({ nativeEvent }) => props.onMenuAction(group, nativeEvent.event)}
+      shouldOpenOnLongPress
+    >
+      <Pressable
+        accessibilityHint={`${group.expanded ? "Closes" : "Opens"} the folder. Hold for its actions.`}
+        accessibilityLabel={`${group.folder.name}, ${group.count} ${group.count === 1 ? "thread" : "threads"}`}
+        accessibilityRole="button"
+        accessibilityState={{ expanded: group.expanded }}
+        className={cn("mb-1.5 mt-4 flex-row items-center gap-2", sidebarPane ? "px-3" : "px-5")}
+        onPress={() => props.onToggle(group.folder.id)}
+        style={({ pressed }) => ({ opacity: pressed ? 0.6 : 1 })}
+      >
+        <View
+          className="size-2 rounded-full"
+          style={{ backgroundColor: SIDEBAR_FOLDER_COLORS[group.folder.color] }}
+        />
+        <Text
+          className={cn(
+            "text-xs font-t3-medium",
+            sidebarPane ? "text-drawer-foreground-muted" : "text-foreground-secondary",
+          )}
+          numberOfLines={1}
+        >
+          {group.folder.name}
+        </Text>
+        <Text
+          className={cn(
+            "text-xs",
+            sidebarPane ? "text-drawer-foreground-muted" : "text-foreground-tertiary",
+          )}
+        >
+          {group.count}
+        </Text>
+        <View className={cn("h-px flex-1", sidebarPane ? "bg-drawer-border" : "bg-border")} />
+        <SymbolView
+          name="chevron.down"
+          size={10}
+          tintColorClassName={
+            sidebarPane ? "accent-drawer-foreground-muted" : "accent-foreground-muted"
+          }
+          type="monochrome"
+          style={{ transform: [{ rotate: group.expanded ? "180deg" : "0deg" }] }}
+        />
+      </Pressable>
+    </Menu>
+  );
 });
 
 export const ThreadListV2ShowMoreRow = memo(function ThreadListV2ShowMoreRow(props: {
@@ -618,6 +716,11 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
   ) => void;
   readonly canMoveUp?: boolean;
   readonly canMoveDown?: boolean;
+  /** The folders a thread can be filed in, with the one it is in. */
+  readonly folders?: ReadonlyArray<SidebarFolder>;
+  readonly folderId?: string | null;
+  readonly isFolderMain?: boolean;
+  readonly onFolderAction?: (thread: EnvironmentThreadShell, actionId: string) => void;
   readonly onSwipeableWillOpen: (methods: SwipeableMethods) => void;
   readonly onSwipeableClose: (methods: SwipeableMethods) => void;
   readonly activationKey?: string;
@@ -640,6 +743,7 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
     onRenameThread,
     onRegenerateThreadTitle,
     onNewThreadOnBranch,
+    onFolderAction,
     onSettleThread,
     onSnoozeThread,
     onUnsnoozeThread,
@@ -799,6 +903,37 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
               : { id: "pin", title: "Pin", image: "pin" },
           ]
         : []),
+      ...(onFolderAction
+        ? [
+            {
+              id: "folder",
+              title: "Folder",
+              image: "folder",
+              subactions: [
+                ...(props.folders ?? []).map((folder): MenuAction => ({
+                  id: `folder:${folder.id}`,
+                  title: folder.name,
+                  state: folder.id === props.folderId ? "on" : "off",
+                })),
+                { id: "folder-new", title: "New folder…", image: "folder.badge.plus" },
+                ...(props.folderId == null
+                  ? []
+                  : [
+                      {
+                        id: "folder-main",
+                        title: props.isFolderMain ? "Stop being main thread" : "Make main thread",
+                        image: "crown",
+                      },
+                      {
+                        id: "folder-none",
+                        title: "Remove from folder",
+                        image: "folder.badge.minus",
+                      },
+                    ]),
+              ],
+            } satisfies MenuAction,
+          ]
+        : []),
     ],
     [
       props.canMoveDown,
@@ -806,6 +941,10 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
       props.reorderSupported,
       props.pinningSupported,
       thread.pinnedAt,
+      onFolderAction,
+      props.folders,
+      props.folderId,
+      props.isFolderMain,
     ],
   );
   const autoSettleMenuItems = useMemo<MenuAction[]>(
@@ -906,6 +1045,7 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
   const handleMenuAction = useCallback(
     ({ nativeEvent }: { readonly nativeEvent: { readonly event: string } }) => {
       if (nativeEvent.event === "new-thread-on-branch") onNewThreadOnBranch(thread);
+      if (nativeEvent.event.startsWith("folder")) onFolderAction?.(thread, nativeEvent.event);
       if (nativeEvent.event === "settle") handleSettle();
       if (nativeEvent.event === "unsettle") handleUnsettle();
       if (nativeEvent.event === "unsnooze") handleUnsnooze();
@@ -943,6 +1083,7 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
     },
     [
       onNewThreadOnBranch,
+      onFolderAction,
       thread,
       handleArchive,
       handleDelete,

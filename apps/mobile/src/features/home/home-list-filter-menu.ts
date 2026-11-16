@@ -36,6 +36,12 @@ export function buildHomeListFilterMenu(props: {
   readonly selectedProjectKey: string | null;
   readonly onEnvironmentChange: (environmentId: EnvironmentId | null) => void;
   readonly onProjectChange: (projectKey: string | null) => void;
+  readonly folders?: {
+    readonly count: number;
+    readonly onNew: () => void;
+    readonly onPaste: () => void;
+    readonly onCopy: () => void;
+  };
 }): HomeListFilterMenu {
   const items: Array<HomeListFilterMenuAction | HomeListFilterMenuSubmenu> = [];
 
@@ -80,6 +86,32 @@ export function buildHomeListFilterMenu(props: {
           state: props.selectedProjectKey === project.key ? ("on" as const) : ("off" as const),
           onPress: () => props.onProjectChange(project.key),
         })),
+      ],
+    });
+  }
+
+  if (props.folders) {
+    items.push({
+      type: "submenu",
+      title: "Folders",
+      items: [
+        { type: "action", title: "New folder…", onPress: props.folders.onNew },
+        {
+          type: "action",
+          title: "Paste folders from computer",
+          subtitle: "Replaces the folders on this phone",
+          onPress: props.folders.onPaste,
+        },
+        ...(props.folders.count > 0
+          ? [
+              {
+                type: "action" as const,
+                title: "Copy folders for computer",
+                subtitle: `${props.folders.count} ${props.folders.count === 1 ? "folder" : "folders"}`,
+                onPress: props.folders.onCopy,
+              },
+            ]
+          : []),
       ],
     });
   }

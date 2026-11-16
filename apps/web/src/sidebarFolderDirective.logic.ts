@@ -4,7 +4,7 @@ import {
   normalizeFolderName,
   setFolderMainThread,
   type SidebarFolderState,
-} from "./sidebarFolders.logic";
+} from "@t3tools/client-runtime/state/thread-folders";
 
 /** Fence language of the block an agent writes to file threads in a sidebar folder. */
 export const SIDEBAR_FOLDER_DIRECTIVE_LANGUAGE = "t3-folders";

@@ -9,7 +9,7 @@ import {
   type SidebarFolderDirective,
 } from "../../sidebarFolderDirective.logic";
 import { applyFolderDirectiveOnce, useSidebarFolderStore } from "../../sidebarFolderStore";
-import { SIDEBAR_FOLDER_COLORS } from "../../sidebarFolders.logic";
+import { SIDEBAR_FOLDER_COLORS } from "@t3tools/client-runtime/state/thread-folders";
 
 /** An agent's folder block: files the threads once the block is complete, then says so. */
 export function SidebarFolderDirectiveCard(props: {

@@ -14,6 +14,10 @@ import {
   type PullRequestMergeMethod,
   type SidebarProjectGroupingMode,
 } from "@t3tools/contracts";
+import {
+  parseSidebarFolderState,
+  type SidebarFolderState,
+} from "@t3tools/client-runtime/state/thread-folders";
 import type { ComposerEnterBehavior } from "../lib/composerEnterBehavior";
 import type { FollowUpBehavior } from "../lib/followUpBehavior";
 import { isMicrophoneKind, type MicrophoneEntry } from "../lib/microphonePriority";
@@ -117,6 +121,8 @@ export interface Preferences {
   readonly threadListFilters?: ThreadListFilters;
   readonly pullRequestListFilters?: PullRequestListPreferences;
   readonly workspaceSelections?: WorkspaceSelections;
+  /** Thread folders pasted from a desktop or web client; they live only on this device. */
+  readonly threadFolders?: SidebarFolderState;
 }
 
 export class MobilePreferencesLoadError extends Schema.TaggedError<MobilePreferencesLoadError>()(
@@ -190,6 +196,7 @@ function sanitizePreferences(parsed: Preferences): Preferences {
     threadListFilters?: ThreadListFilters;
     pullRequestListFilters?: PullRequestListPreferences;
     workspaceSelections?: WorkspaceSelections;
+    threadFolders?: SidebarFolderState;
   } = {};
 
   if (Array.isArray(parsed.hiddenNavigationTabs)) {
@@ -331,6 +338,9 @@ function sanitizePreferences(parsed: Preferences): Preferences {
   }
   if (isWorkspaceSelections(parsed.workspaceSelections)) {
     preferences.workspaceSelections = parsed.workspaceSelections;
+  }
+  if (parsed.threadFolders !== undefined) {
+    preferences.threadFolders = parseSidebarFolderState(parsed.threadFolders);
   }
   return preferences;
 }

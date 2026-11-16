@@ -29,7 +29,7 @@ import {
   toggleFolderCollapsed,
   type SidebarFolderColor,
   type SidebarFolderState,
-} from "./sidebarFolders.logic";
+} from "@t3tools/client-runtime/state/thread-folders";
 
 const SIDEBAR_FOLDERS_STORAGE_KEY = "t3code:sidebar-folders:v1";
 
@@ -92,6 +92,8 @@ interface SidebarFolderStore extends SidebarFolderState {
   ) => void;
   /** `threadKey` null leaves the folder without a main thread. */
   readonly setMainThread: (folderId: string, threadKey: string | null) => void;
+  /** Replaces the folders, as when pasting another client's. */
+  readonly replaceFolders: (state: SidebarFolderState) => void;
   /** Files threads as an agent's folder block asks, creating its folder when missing. */
   readonly applyDirective: (directive: SidebarFolderDirective, environmentId: string) => void;
 }
@@ -153,6 +155,7 @@ export const useSidebarFolderStore = create<SidebarFolderStore>()((set, get) => 
       ),
     setMainThread: (folderId, threadKey) =>
       apply((state) => setFolderMainThread(state, folderId, threadKey)),
+    replaceFolders: (next) => apply(() => next),
     applyDirective: (directive, environmentId) =>
       apply((state) =>
         applyFolderDirective(state, directive, { environmentId, newFolderId: newFolderId() }),

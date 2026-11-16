@@ -6,7 +6,10 @@ import {
   folderDirectiveThreadKeys,
   parseFolderDirective,
 } from "./sidebarFolderDirective.logic";
-import { EMPTY_SIDEBAR_FOLDER_STATE, createFolder } from "./sidebarFolders.logic";
+import {
+  EMPTY_SIDEBAR_FOLDER_STATE,
+  createFolder,
+} from "@t3tools/client-runtime/state/thread-folders";
 
 const ENV = "3cfd6f8c-e873-4189-8fa1-687194cca3d4";
 const OTHER_ENV = "9e05808e-d173-4498-bac0-0e21f1399be1";

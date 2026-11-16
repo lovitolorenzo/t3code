@@ -4,7 +4,10 @@ import { FolderClosedIcon, FolderPlusIcon, FolderXIcon } from "lucide-react";
 import { memo } from "react";
 
 import { requestNewFolder, useSidebarFolderStore } from "../sidebarFolderStore";
-import { resolveDraftFolderId, SIDEBAR_FOLDER_COLORS } from "../sidebarFolders.logic";
+import {
+  resolveDraftFolderId,
+  SIDEBAR_FOLDER_COLORS,
+} from "@t3tools/client-runtime/state/thread-folders";
 import { ComposerSelectControl } from "./chat/ComposerControl";
 import { useComposerMenuProps } from "./chat/composerEventScope";
 import { ComposerContextLabel } from "./ComposerContextLabel";

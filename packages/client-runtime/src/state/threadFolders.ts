@@ -321,7 +321,7 @@ export function groupThreadsByFolder<T>(
       const unplaced = grouped.filter((thread) => !rank.has(keyOf(thread)));
       const placed = grouped
         .filter((thread) => rank.has(keyOf(thread)))
-        .toSorted((a, b) => rank.get(keyOf(a))! - rank.get(keyOf(b))!);
+        .sort((a, b) => rank.get(keyOf(a))! - rank.get(keyOf(b))!);
       const mainKey = mainThreadKeyByFolder[folder.id];
       const main = grouped.filter((thread) => keyOf(thread) === mainKey);
       const others = [...unplaced, ...placed].filter((thread) => keyOf(thread) !== mainKey);
@@ -494,4 +494,39 @@ export function parseSidebarFolderState(value: unknown): SidebarFolderState {
     threadOrderByFolder,
     mainThreadKeyByFolder,
   };
+}
+
+const EXPORT_PREFIX = "T3 Code folders v1:";
+
+/** The folders as text another client can paste in: folders, filing, order and main threads. */
+export function exportSidebarFolders(state: SidebarFolderState): string {
+  const { folders, folderIdByThreadKey, threadOrderByFolder, mainThreadKeyByFolder } = state;
+  return `${EXPORT_PREFIX}${JSON.stringify({ folders, folderIdByThreadKey, threadOrderByFolder, mainThreadKeyByFolder })}`;
+}
+
+/**
+ * Replaces the folders with the ones in exported `text`, keeping this client's own choices
+ * (closed groups, filter, drafts) that still name a folder, or returns null when the text is
+ * no folder export.
+ */
+export function importSidebarFolders(
+  state: SidebarFolderState,
+  text: string,
+): SidebarFolderState | null {
+  const trimmed = text.trim();
+  if (!trimmed.startsWith(EXPORT_PREFIX)) return null;
+  let raw: unknown;
+  try {
+    raw = JSON.parse(trimmed.slice(EXPORT_PREFIX.length));
+  } catch {
+    return null;
+  }
+  const imported = parseSidebarFolderState(raw);
+  return parseSidebarFolderState({
+    ...state,
+    folders: imported.folders,
+    folderIdByThreadKey: imported.folderIdByThreadKey,
+    threadOrderByFolder: imported.threadOrderByFolder,
+    mainThreadKeyByFolder: imported.mainThreadKeyByFolder,
+  });
 }

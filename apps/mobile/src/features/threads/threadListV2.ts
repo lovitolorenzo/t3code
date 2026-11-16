@@ -27,6 +27,12 @@ import {
   sortPinnedThreadsByOrderKey,
   sortSettledThreads,
 } from "@t3tools/client-runtime/state/thread-sort";
+import {
+  EMPTY_SIDEBAR_FOLDER_STATE,
+  groupThreadsByFolder,
+  type SidebarFolder,
+  type SidebarFolderState,
+} from "@t3tools/client-runtime/state/thread-folders";
 import type { EnvironmentId, ProjectId } from "@t3tools/contracts";
 
 import type { ThreadListProvider } from "../../state/thread-list-environments";
@@ -274,8 +280,20 @@ export interface ThreadListV2Item {
   readonly isLast: boolean;
 }
 
+/** A folder's group in the active section; its rows start at `index` in the layout's items. */
+export interface ThreadListV2FolderGroup {
+  readonly folder: SidebarFolder;
+  readonly index: number;
+  readonly count: number;
+  readonly expanded: boolean;
+  /** The group's threads its environment lets settle. */
+  readonly settleableThreads: ReadonlyArray<EnvironmentThreadShell>;
+  readonly mainThread: EnvironmentThreadShell | null;
+}
+
 export interface ThreadListV2Layout {
   readonly items: ThreadListV2Item[];
+  readonly folderGroups: ReadonlyArray<ThreadListV2FolderGroup>;
   readonly hiddenSettledCount: number;
   /** The settled rows the shelf may list, before its visible limit. */
   readonly listedSettledThreads: ReadonlyArray<EnvironmentThreadShell>;
@@ -303,6 +321,15 @@ export interface ThreadListV2ThreadListItem {
   readonly hasQueuedMessages: boolean;
   readonly canMoveUp: boolean;
   readonly canMoveDown: boolean;
+  readonly folders: ReadonlyArray<SidebarFolder>;
+  readonly folderId: string | null;
+  readonly isFolderMain: boolean;
+}
+
+export interface ThreadListV2FolderListItem {
+  readonly type: "v2-folder";
+  readonly key: string;
+  readonly group: ThreadListV2FolderGroup;
 }
 
 export interface ThreadListV2PendingListItem {
@@ -340,6 +367,7 @@ export interface ThreadListV2SettledShelfListItem {
 
 export type ThreadListV2ListItem =
   | ThreadListV2ThreadListItem
+  | ThreadListV2FolderListItem
   | ThreadListV2PendingListItem
   | ThreadListV2WorkingShelfListItem
   | ThreadListV2SnoozedShelfListItem
@@ -350,6 +378,7 @@ export function isThreadListV2ListItem(value: {
 }): value is ThreadListV2ListItem {
   return (
     value.type === "v2-thread" ||
+    value.type === "v2-folder" ||
     value.type === "v2-pending" ||
     value.type === "v2-working-shelf" ||
     value.type === "v2-snoozed-shelf" ||
@@ -378,8 +407,23 @@ export function threadListV2ListItemsAreEqual(
         previous.showTrailingDivider === item.showTrailingDivider &&
         previous.hasQueuedMessages === item.hasQueuedMessages &&
         previous.canMoveUp === item.canMoveUp &&
-        previous.canMoveDown === item.canMoveDown
+        previous.canMoveDown === item.canMoveDown &&
+        previous.folders === item.folders &&
+        previous.folderId === item.folderId &&
+        previous.isFolderMain === item.isFolderMain
       );
+    case "v2-folder": {
+      if (previous.type !== "v2-folder") return false;
+      const [before, after] = [previous.group, item.group];
+      return (
+        before.folder === after.folder &&
+        before.count === after.count &&
+        before.expanded === after.expanded &&
+        before.mainThread === after.mainThread &&
+        before.settleableThreads.length === after.settleableThreads.length &&
+        before.settleableThreads.every((thread, index) => thread === after.settleableThreads[index])
+      );
+    }
     case "v2-pending":
       return (
         previous.type === "v2-pending" &&
@@ -444,6 +488,8 @@ export function buildThreadListV2ListItems(input: {
   readonly settledCount?: number;
   readonly settledShelfExpanded?: boolean;
   readonly settledShelfHeaderIndex?: number | null;
+  readonly folderGroups?: ReadonlyArray<ThreadListV2FolderGroup>;
+  readonly folders?: SidebarFolderState;
   readonly snoozeLabelNow?: string;
   readonly snoozeEnvironmentIds?: ReadonlySet<EnvironmentId>;
   readonly queuedThreadKeys?: ReadonlySet<string>;
@@ -451,7 +497,10 @@ export function buildThreadListV2ListItems(input: {
   readonly shelfPreferencesLoading?: boolean;
 }): ThreadListV2ListItem[] {
   const queuedThreadKeys = input.queuedThreadKeys?.size ? input.queuedThreadKeys : undefined;
+  const folders = input.folders ?? EMPTY_SIDEBAR_FOLDER_STATE;
   const threadItems = input.items.map((item): ThreadListV2ListItem => {
+    const threadKey = `${item.thread.environmentId}:${item.thread.id}`;
+    const folderId = folders.folderIdByThreadKey[threadKey] ?? null;
     const snoozeWakeLabelText =
       item.snoozed && item.thread.snoozedUntil != null && input.snoozeLabelNow !== undefined
         ? snoozeWakeLabel(item.thread.snoozedUntil, { now: input.snoozeLabelNow })
@@ -480,6 +529,9 @@ export function buildThreadListV2ListItems(input: {
         queuedThreadKeys?.has(`${item.thread.environmentId}:${item.thread.id}`) === true,
       canMoveUp: move?.canMoveUp === true,
       canMoveDown: move?.canMoveDown === true,
+      folders: folders.folders,
+      folderId,
+      isFolderMain: folderId !== null && folders.mainThreadKeyByFolder[folderId] === threadKey,
     };
   });
   const pendingItems = input.pendingTasks.map((pendingTask, index): ThreadListV2ListItem => ({
@@ -498,7 +550,14 @@ export function buildThreadListV2ListItems(input: {
   const snoozedEnd = settledShelfHeaderIndex ?? threadItems.length;
   const workingEnd = snoozedShelfHeaderIndex ?? snoozedEnd;
   const activeEnd = workingShelfHeaderIndex ?? workingEnd;
-  const result: ThreadListV2ListItem[] = [...pendingItems, ...threadItems.slice(0, activeEnd)];
+  const result: ThreadListV2ListItem[] = [...pendingItems];
+  let activeCursor = 0;
+  for (const group of input.folderGroups ?? []) {
+    result.push(...threadItems.slice(activeCursor, group.index));
+    result.push({ type: "v2-folder", key: `v2-folder:${group.folder.id}`, group });
+    activeCursor = group.index;
+  }
+  result.push(...threadItems.slice(activeCursor, activeEnd));
   const shelfDisabled = input.shelfPreferencesLoading === true;
   if (workingShelfHeaderIndex !== null && workingCount > 0) {
     result.push({
@@ -589,6 +648,8 @@ export function buildThreadListV2Items(input: {
   readonly isListedSettled?: (thread: EnvironmentThreadShell) => boolean;
   /** Settled threads in scope that are not local (older settled threads not loaded). */
   readonly unloadedSettledCount?: number;
+  /** Folders group the active section's rows. */
+  readonly folders?: SidebarFolderState;
 }): ThreadListV2Layout {
   const now = input.now;
   const pending =
@@ -692,6 +753,7 @@ export function buildThreadListV2Items(input: {
     });
     const results = [...rankedMatches, ...contentOnly];
     return {
+      folderGroups: [],
       items: results.map((thread, index) => ({
         thread,
         variant: slim.has(thread) ? "slim" : "card",
@@ -774,7 +836,7 @@ export function buildThreadListV2Items(input: {
       isLast: false,
     });
   }
-  for (const thread of orderedActive) {
+  const pushActive = (thread: EnvironmentThreadShell) =>
     items.push({
       thread,
       variant: "card",
@@ -783,6 +845,36 @@ export function buildThreadListV2Items(input: {
       wokeAt: resolveThreadListV2WokeAt(thread, { now }),
       isLast: false,
     });
+  const folders = input.folders ?? EMPTY_SIDEBAR_FOLDER_STATE;
+  const activeByFolder = groupThreadsByFolder(
+    orderedActive,
+    (thread) => `${thread.environmentId}:${thread.id}`,
+    folders.folders,
+    folders.folderIdByThreadKey,
+    folders.threadOrderByFolder,
+    folders.mainThreadKeyByFolder,
+  );
+  activeByFolder.unfiled.forEach(pushActive);
+  const folderGroups: ThreadListV2FolderGroup[] = [];
+  for (const { folder, threads } of activeByFolder.groups) {
+    const expanded = !folders.collapsedFolderIds.includes(folder.id);
+    const mainKey = folders.mainThreadKeyByFolder[folder.id];
+    folderGroups.push({
+      folder,
+      index: items.length,
+      count: threads.length,
+      expanded,
+      settleableThreads: threads.filter(
+        (thread) => input.settlementEnvironmentIds?.has(thread.environmentId) ?? true,
+      ),
+      mainThread:
+        threads.find((thread) => `${thread.environmentId}:${thread.id}` === mainKey) ?? null,
+    });
+    // A closed folder still lists the open thread, as a closed shelf does.
+    (expanded
+      ? threads
+      : threads.filter((thread) => `${thread.environmentId}:${thread.id}` === selectedThreadKey)
+    ).forEach(pushActive);
   }
   const workingShelfHeaderIndex = orderedWorking.length > 0 ? items.length : null;
   for (const thread of visibleWorking) {
@@ -823,6 +915,7 @@ export function buildThreadListV2Items(input: {
   }
   return {
     items,
+    folderGroups,
     hiddenSettledCount: Math.max(0, settledTotal - pagedSettled.length),
     listedSettledThreads: listedSettled,
     workingCount: orderedWorking.length,

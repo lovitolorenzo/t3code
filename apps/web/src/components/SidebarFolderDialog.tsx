@@ -13,7 +13,7 @@ import {
   normalizeFolderName,
   SIDEBAR_FOLDER_COLORS,
   type SidebarFolderColor,
-} from "../sidebarFolders.logic";
+} from "@t3tools/client-runtime/state/thread-folders";
 import { cn } from "~/lib/utils";
 import { Button } from "./ui/button";
 import {

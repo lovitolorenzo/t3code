@@ -21,7 +21,9 @@ import {
   setDraftFolderChoice,
   settlePromotedDraft,
   sharedFolderId,
-} from "./sidebarFolders.logic";
+  exportSidebarFolders,
+  importSidebarFolders,
+} from "./threadFolders.ts";
 
 const withFolders = createFolder(
   createFolder(EMPTY_SIDEBAR_FOLDER_STATE, { id: "ci", name: " CI " }),
@@ -239,5 +241,24 @@ describe("sidebar folders", () => {
         mainThreadKeyByFolder: { ci: "env:a", docs: "env:b" },
       }).mainThreadKeyByFolder,
     ).toEqual({ ci: "env:a" });
+  });
+
+  it("carries folders to another client as text, keeping that client's closed groups", () => {
+    const mac = setFolderMainThread(
+      moveThreadsToFolder(withFolders, ["env:a", "env:b"], "ci"),
+      "ci",
+      "env:b",
+    );
+    const phone = { ...EMPTY_SIDEBAR_FOLDER_STATE, collapsedFolderIds: ["ci", "gone"] };
+    const imported = importSidebarFolders(phone, `  ${exportSidebarFolders(mac)}\n`);
+    expect(imported).toEqual({
+      ...EMPTY_SIDEBAR_FOLDER_STATE,
+      folders: mac.folders,
+      folderIdByThreadKey: { "env:a": "ci", "env:b": "ci" },
+      mainThreadKeyByFolder: { ci: "env:b" },
+      collapsedFolderIds: ["ci"],
+    });
+    expect(importSidebarFolders(phone, "Folders: CI")).toBeNull();
+    expect(importSidebarFolders(phone, "T3 Code folders v1:{oops")).toBeNull();
   });
 });

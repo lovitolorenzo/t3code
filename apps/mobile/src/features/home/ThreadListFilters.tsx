@@ -15,6 +15,12 @@ export function ThreadListFilters(
   > & {
     /** List padding the scroller bleeds through so pills start where row content does. */
     readonly gutter: number;
+    readonly folders?: {
+      readonly count: number;
+      readonly onNew: () => void;
+      readonly onPaste: () => void;
+      readonly onCopy: () => void;
+    };
   },
 ) {
   const selectedEnvironment = props.environments.find(
@@ -85,6 +91,29 @@ export function ThreadListFilters(
           }
         }}
       />
+      {props.folders ? (
+        <ListFilterMenu
+          label="Folders"
+          accessibilityLabel="Folder actions"
+          actions={[
+            { id: "new", title: "New folder…", image: "folder.badge.plus" },
+            {
+              id: "paste",
+              title: "Paste folders from computer",
+              subtitle: "Replaces the folders on this phone",
+              image: "doc.on.clipboard",
+            },
+            ...(props.folders.count > 0
+              ? [{ id: "copy", title: "Copy folders for computer", image: "doc.on.doc" }]
+              : []),
+          ]}
+          onSelect={(id) => {
+            if (id === "new") props.folders?.onNew();
+            if (id === "paste") props.folders?.onPaste();
+            if (id === "copy") props.folders?.onCopy();
+          }}
+        />
+      ) : null}
       {props.selectedEnvironmentId !== null || props.selectedProjectKey !== null ? (
         <Pressable
           accessibilityRole="button"

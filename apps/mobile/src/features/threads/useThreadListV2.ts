@@ -54,6 +54,7 @@ export function useThreadListV2(input: {
   readonly snoozedShelfExpanded: boolean;
   readonly settledShelfExpanded: boolean;
   readonly selectedThreadKey: string | null;
+  readonly folders: LayoutInput["folders"];
 }) {
   const { threads, workingShelfEnabled } = input;
   // A thread can stop working when the threads change, or when its exit grace expires.
@@ -117,6 +118,7 @@ export function useThreadListV2(input: {
     snoozedShelfExpanded: input.snoozedShelfExpanded,
     settledShelfExpanded: input.settledShelfExpanded,
     selectedThreadKey: input.selectedThreadKey,
+    folders: input.folders,
     isListedSettled: olderSettledShelf.isListed,
     unloadedSettledCount: olderSettledShelf.unloadedCount(
       threads.filter(
@@ -158,6 +160,8 @@ export function useThreadListV2(input: {
     settledCount: layout.settledCount,
     settledShelfExpanded: input.settledShelfExpanded,
     settledShelfHeaderIndex: layout.settledShelfHeaderIndex,
+    folderGroups: layout.folderGroups,
+    folders: input.folders,
     snoozeLabelNow: `${input.now.slice(0, 16)}:00.000Z`,
     snoozeEnvironmentIds: input.snoozeEnvironmentIds,
     queuedThreadKeys: input.queuedThreadKeys,

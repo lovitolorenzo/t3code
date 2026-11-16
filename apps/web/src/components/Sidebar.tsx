@@ -127,7 +127,7 @@ import { isCommandPaletteOpen, openCommandPalette } from "../commandPaletteBus";
 import { registerSettleAndAdvance } from "../settleAndAdvance";
 import { startNewThreadFromContext } from "../lib/chatThreadActions";
 import { useClientSettings } from "../hooks/useSettings";
-import { useCopyToClipboard } from "../hooks/useCopyToClipboard";
+import { readTextFromClipboard, useCopyToClipboard } from "../hooks/useCopyToClipboard";
 import { useLocalStorage } from "../hooks/useLocalStorage";
 import { useNowMinute } from "../hooks/useNowMinute";
 import {
@@ -239,12 +239,14 @@ import {
 import {
   SIDEBAR_FOLDER_COLORS,
   countThreadsByFolder,
+  exportSidebarFolders,
   groupThreadsByFolder,
+  importSidebarFolders,
   moveInFolderOrder,
   placeInFolderOrder,
   sharedFolderId,
   type SidebarFolder,
-} from "../sidebarFolders.logic";
+} from "@t3tools/client-runtime/state/thread-folders";
 import { requestFolderDetails } from "../sidebarFolderNameRequest";
 import { suggestFolders } from "../sidebarFolderSuggest.logic";
 import { FolderSuggestionContext } from "./sidebar/folderSuggestionContext";
@@ -930,6 +932,25 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
       );
     },
   });
+  const { copyToClipboard: copyFoldersToClipboard } = useCopyToClipboard<{ count: number }>({
+    target: "folders",
+    onCopy: ({ count }) => {
+      toastManager.add({
+        type: "success",
+        title: count === 1 ? "1 folder copied" : `${count} folders copied`,
+        description: "Paste them in T3 Code on your phone, from the thread list options.",
+      });
+    },
+    onError: (error) => {
+      toastManager.add(
+        stackedThreadToast({
+          type: "error",
+          title: "Failed to copy folders",
+          description: error instanceof Error ? error.message : "An error occurred.",
+        }),
+      );
+    },
+  });
   const { copyToClipboard: copyThreadIdToClipboard } = useCopyToClipboard<{ threadId: ThreadId }>({
     onCopy: ({ threadId }) => {
       toastManager.add({
@@ -1254,6 +1275,38 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
       if (confirmed._tag === "Failure" || !confirmed.value) return;
     }
     useSidebarFolderStore.getState().deleteFolder(folderId);
+  });
+  const handlePasteFolders = useStableCallback(async () => {
+    const text = await settlePromise(() => readTextFromClipboard("folders"));
+    const current = useSidebarFolderStore.getState();
+    const next = text._tag === "Success" ? importSidebarFolders(current, text.value) : null;
+    if (next === null) {
+      toastManager.add({
+        type: "error",
+        title: "No folders to paste",
+        description:
+          'On your phone, open Folders and choose "Copy folders for computer", then paste here.',
+      });
+      return;
+    }
+    const api = readLocalApi();
+    if (api) {
+      const confirmed = await settlePromise(() =>
+        api.dialogs.confirm(
+          [
+            `Replace your ${current.folders.length} folders with the ${next.folders.length} pasted?`,
+            "Threads stay where they are; only their folders change.",
+          ].join("\n"),
+        ),
+      );
+      if (confirmed._tag === "Failure" || !confirmed.value) return;
+    }
+    useSidebarFolderStore.getState().replaceFolders(next);
+    toastManager.add({
+      type: "success",
+      title:
+        next.folders.length === 1 ? "1 folder pasted" : `${next.folders.length} folders pasted`,
+    });
   });
   const [renamingFolderId, setRenamingFolderId] = useState<string | null>(null);
 
@@ -3037,6 +3090,8 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
               { id: "move-down", label: "Move folder down", disabled: nextFolderId === undefined },
               { id: "rename", label: "Rename folder", icon: "pencil", separatorBefore: true },
               { id: "edit", label: "Edit folder...", icon: "settings" },
+              { id: "copy-for-mobile", label: "Copy folders for mobile", icon: "copy" },
+              { id: "paste-folders", label: "Paste folders", icon: "clipboard-paste" },
               {
                 id: "delete",
                 label: "Delete folder",
@@ -3076,6 +3131,14 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
           case "edit":
             void handleEditFolder(folderId);
             return;
+          case "paste-folders":
+            void handlePasteFolders();
+            return;
+          case "copy-for-mobile": {
+            const state = useSidebarFolderStore.getState();
+            copyFoldersToClipboard(exportSidebarFolders(state), { count: state.folders.length });
+            return;
+          }
           case "delete":
             void handleDeleteFolder(folderId, folder.name);
             return;
