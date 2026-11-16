@@ -89,6 +89,9 @@ T3CODE_IOS_PERSONAL_TEAM_BUNDLE_ID=com.example.t3code.dev \
 vp run ios:dev
 ```
 
+Set `T3CODE_IOS_PERSONAL_TEAM_ID` to your team's ID (shown in parentheses after your name in
+`security find-identity -v -p codesigning`), or Xcode asks for the team on each build.
+
 Build and install a self-contained Release app that does not need Metro:
 
 ```bash
