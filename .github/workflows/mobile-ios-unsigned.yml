@@ -21,13 +21,13 @@ env:
 
 jobs:
   ipa:
-    # arm64 runners are often short of capacity, so the Intel image builds too.
+    # arm64 runners are often short of capacity, so several images build at once.
     strategy:
       fail-fast: false
       matrix:
-        runner: [macos-26-intel, macos-26]
+        runner: [macos-26, macos-15, macos-26-intel]
     runs-on: ${{ matrix.runner }}
-    timeout-minutes: 90
+    timeout-minutes: 300
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -53,8 +53,11 @@ jobs:
           echo "$vp_pnpm_bin" >> "$GITHUB_PATH"
           "$vp_pnpm_bin/pnpm" --version
 
-      - name: Show Xcode
-        run: xcodebuild -version
+      - name: Select Xcode 26
+        run: |
+          xcode="$(ls -d /Applications/Xcode_26*.app | grep -v -i beta | sort -V | tail -1)"
+          sudo xcode-select -s "$xcode"
+          xcodebuild -version
 
       - name: Prebuild
         working-directory: apps/mobile
@@ -68,7 +71,7 @@ jobs:
           xcodebuild -workspace "$workspace" -scheme "$scheme" -configuration Release \
             -sdk iphoneos -destination 'generic/platform=iOS' -derivedDataPath build \
             CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
-            build | tail -200
+            build | grep -E --line-buffered '^(\*\*|error|.*error:|Ld |PhaseScriptExecution)'
           test "${PIPESTATUS[0]}" -eq 0
 
       - name: Package IPA
