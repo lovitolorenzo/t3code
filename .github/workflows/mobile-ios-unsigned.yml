@@ -1,0 +1,85 @@
+name: Mobile iOS unsigned IPA
+
+# Builds an unsigned Release IPA of the Personal Team variant, to be signed and
+# installed with a free Apple ID by a sideloading tool such as Sideloadly.
+
+on:
+  workflow_dispatch:
+    inputs:
+      runner:
+        description: macOS runner image
+        required: true
+        default: macos-26
+
+permissions:
+  contents: read
+
+env:
+  NODE_OPTIONS: --max-old-space-size=8192
+  APP_VARIANT: production
+  EXPO_NO_GIT_STATUS: "1"
+  T3CODE_IOS_PERSONAL_TEAM: "1"
+  T3CODE_IOS_PERSONAL_TEAM_BUNDLE_ID: com.lovitolorenzo.t3code
+  T3CODE_MOBILE_UPDATES_ENABLED: "0"
+
+jobs:
+  ipa:
+    runs-on: ${{ inputs.runner }}
+    timeout-minutes: 90
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          sparse-checkout: |
+            /*
+            !/.repos/
+          sparse-checkout-cone-mode: false
+
+      - name: Setup Vite+
+        uses: voidzero-dev/setup-vp@v1
+        with:
+          node-version-file: package.json
+          cache: true
+          run-install: |
+            args:
+              - --filter=@t3tools/mobile...
+
+      - name: Expose pnpm
+        run: |
+          pnpm_version="$(node --print "require('./package.json').packageManager.split('@').pop()")"
+          vp_pnpm_bin="$HOME/.vite-plus/package_manager/pnpm/$pnpm_version/pnpm/bin"
+          echo "$vp_pnpm_bin" >> "$GITHUB_PATH"
+          "$vp_pnpm_bin/pnpm" --version
+
+      - name: Show Xcode
+        run: xcodebuild -version
+
+      - name: Prebuild
+        working-directory: apps/mobile
+        run: pnpm exec expo prebuild --clean --platform ios
+
+      - name: Build
+        working-directory: apps/mobile/ios
+        run: |
+          workspace="$(ls -d *.xcworkspace | head -1)"
+          scheme="${workspace%.xcworkspace}"
+          xcodebuild -workspace "$workspace" -scheme "$scheme" -configuration Release \
+            -sdk iphoneos -destination 'generic/platform=iOS' -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
+            build | tail -200
+          test "${PIPESTATUS[0]}" -eq 0
+
+      - name: Package IPA
+        working-directory: apps/mobile/ios
+        run: |
+          mkdir -p Payload
+          cp -R build/Build/Products/Release-iphoneos/*.app Payload/
+          zip -qry "$GITHUB_WORKSPACE/T3Code-folders.ipa" Payload
+          ls -lh "$GITHUB_WORKSPACE/T3Code-folders.ipa"
+
+      - name: Upload IPA
+        uses: actions/upload-artifact@v7
+        with:
+          name: T3Code-folders-ipa
+          path: T3Code-folders.ipa
+          retention-days: 14
