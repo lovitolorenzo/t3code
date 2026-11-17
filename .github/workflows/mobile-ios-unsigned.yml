@@ -7,11 +7,6 @@ on:
   push:
     branches: [ios-unsigned-build]
   workflow_dispatch:
-    inputs:
-      runner:
-        description: macOS runner image
-        required: true
-        default: macos-26
 
 permissions:
   contents: read
@@ -26,7 +21,12 @@ env:
 
 jobs:
   ipa:
-    runs-on: ${{ inputs.runner || 'macos-26' }}
+    # arm64 runners are often short of capacity, so the Intel image builds too.
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [macos-26-intel, macos-26]
+    runs-on: ${{ matrix.runner }}
     timeout-minutes: 90
     steps:
       - name: Checkout
@@ -82,6 +82,6 @@ jobs:
       - name: Upload IPA
         uses: actions/upload-artifact@v7
         with:
-          name: T3Code-folders-ipa
+          name: T3Code-folders-ipa-${{ matrix.runner }}
           path: T3Code-folders.ipa
           retention-days: 14
