@@ -4,6 +4,8 @@ name: Mobile iOS unsigned IPA
 # installed with a free Apple ID by a sideloading tool such as Sideloadly.
 
 on:
+  push:
+    branches: [ios-unsigned-build]
   workflow_dispatch:
     inputs:
       runner:
@@ -24,7 +26,7 @@ env:
 
 jobs:
   ipa:
-    runs-on: ${{ inputs.runner }}
+    runs-on: ${{ inputs.runner || 'macos-26' }}
     timeout-minutes: 90
     steps:
       - name: Checkout
