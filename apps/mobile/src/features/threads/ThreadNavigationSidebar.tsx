@@ -640,6 +640,7 @@ function ThreadNavigationSidebarPane(
           <ThreadListV2FolderHeader
             pane="sidebar"
             group={item.group}
+            readOnly={threadFolders.readOnly}
             onToggle={threadFolders.toggleFolder}
             onMenuAction={(group, actionId) =>
               threadFolders.handleFolderMenuAction(group, actionId, {
@@ -704,12 +705,7 @@ function ThreadNavigationSidebarPane(
     selectedProjectKey,
     onEnvironmentChange: setSelectedEnvironmentId,
     onProjectChange: setSelectedProjectKey,
-    folders: {
-      count: threadFolders.folders.folders.length,
-      onNew: () => threadFolders.promptNewFolder(),
-      onPaste: () => void threadFolders.pasteFolders(),
-      onCopy: () => void threadFolders.copyFolders(),
-    },
+    folders: threadFolders.listActions,
   });
   const nativeHeaderItems = createSidebarHeaderItems({
     filterIcon,

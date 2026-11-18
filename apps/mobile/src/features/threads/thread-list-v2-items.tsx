@@ -302,6 +302,8 @@ export const ThreadListV2SettledShelfHeader = memo(function ThreadListV2SettledS
 export const ThreadListV2FolderHeader = memo(function ThreadListV2FolderHeader(props: {
   readonly pane?: "screen" | "sidebar";
   readonly group: ThreadListV2FolderGroup;
+  /** Mirrored folders can be opened and closed but not edited. */
+  readonly readOnly?: boolean;
   readonly onToggle: (folderId: string) => void;
   readonly onMenuAction: (group: ThreadListV2FolderGroup, actionId: string) => void;
 }) {
@@ -319,25 +321,31 @@ export const ThreadListV2FolderHeader = memo(function ThreadListV2FolderHeader(p
         image: "checkmark.circle",
         attributes: { disabled: settleCount === 0 },
       },
-      { id: "rename", title: "Rename", image: "pencil" },
-      {
-        id: "color",
-        title: "Color",
-        image: "paintpalette",
-        subactions: (Object.keys(SIDEBAR_FOLDER_COLORS) as SidebarFolderColor[]).map((color) => ({
-          id: `color:${color}`,
-          title: color.charAt(0).toUpperCase() + color.slice(1),
-          state: color === group.folder.color ? "on" : "off",
-        })),
-      },
-      {
-        id: "delete",
-        title: "Delete folder",
-        image: "trash",
-        attributes: { destructive: true },
-      },
+      ...(props.readOnly
+        ? []
+        : [
+            { id: "rename", title: "Rename", image: "pencil" },
+            {
+              id: "color",
+              title: "Color",
+              image: "paintpalette",
+              subactions: (Object.keys(SIDEBAR_FOLDER_COLORS) as SidebarFolderColor[]).map(
+                (color): MenuAction => ({
+                  id: `color:${color}`,
+                  title: color.charAt(0).toUpperCase() + color.slice(1),
+                  state: color === group.folder.color ? "on" : "off",
+                }),
+              ),
+            },
+            {
+              id: "delete",
+              title: "Delete folder",
+              image: "trash",
+              attributes: { destructive: true },
+            },
+          ]),
     ],
-    [group.mainThread, group.folder.color, settleCount],
+    [group.mainThread, group.folder.color, settleCount, props.readOnly],
   );
   return (
     <Menu

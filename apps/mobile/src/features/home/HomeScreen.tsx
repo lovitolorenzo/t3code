@@ -572,6 +572,7 @@ export function HomeScreen(props: HomeScreenProps) {
         <ThreadListV2FolderHeader
           pane={primaryColumn ? "sidebar" : "screen"}
           group={item.group}
+          readOnly={threadFolders.readOnly}
           onToggle={threadFolders.toggleFolder}
           onMenuAction={(group, actionId) =>
             threadFolders.handleFolderMenuAction(group, actionId, {
@@ -755,12 +756,7 @@ export function HomeScreen(props: HomeScreenProps) {
           selectedProjectKey={props.selectedProjectKey}
           onEnvironmentChange={props.onEnvironmentChange}
           onProjectChange={props.onProjectChange}
-          folders={{
-            count: threadFolders.folders.folders.length,
-            onNew: () => threadFolders.promptNewFolder(),
-            onPaste: () => void threadFolders.pasteFolders(),
-            onCopy: () => void threadFolders.copyFolders(),
-          }}
+          folders={threadFolders.listActions}
         />
       ) : null}
     </>

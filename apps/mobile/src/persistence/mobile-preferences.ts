@@ -123,6 +123,8 @@ export interface Preferences {
   readonly workspaceSelections?: WorkspaceSelections;
   /** Thread folders pasted from a desktop or web client; they live only on this device. */
   readonly threadFolders?: SidebarFolderState;
+  /** Folders closed on this device while it shows the computers' mirrored folders. */
+  readonly mirroredFolderCollapsedIds?: ReadonlyArray<string>;
 }
 
 export class MobilePreferencesLoadError extends Schema.TaggedError<MobilePreferencesLoadError>()(
@@ -197,6 +199,7 @@ function sanitizePreferences(parsed: Preferences): Preferences {
     pullRequestListFilters?: PullRequestListPreferences;
     workspaceSelections?: WorkspaceSelections;
     threadFolders?: SidebarFolderState;
+    mirroredFolderCollapsedIds?: ReadonlyArray<string>;
   } = {};
 
   if (Array.isArray(parsed.hiddenNavigationTabs)) {
@@ -341,6 +344,11 @@ function sanitizePreferences(parsed: Preferences): Preferences {
   }
   if (parsed.threadFolders !== undefined) {
     preferences.threadFolders = parseSidebarFolderState(parsed.threadFolders);
+  }
+  if (Array.isArray(parsed.mirroredFolderCollapsedIds)) {
+    preferences.mirroredFolderCollapsedIds = parsed.mirroredFolderCollapsedIds.filter(
+      (id): id is string => typeof id === "string",
+    );
   }
   return preferences;
 }

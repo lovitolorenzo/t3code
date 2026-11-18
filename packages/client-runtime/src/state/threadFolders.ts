@@ -530,3 +530,91 @@ export function importSidebarFolders(
     mainThreadKeyByFolder: imported.mainThreadKeyByFolder,
   });
 }
+
+/** The file, in a server's Scratch folder, where a desktop or web client mirrors its folders. */
+export const SIDEBAR_FOLDER_MIRROR_FILE = ".t3code-sidebar-folders.json";
+
+/** One computer's folders as read from its mirror file. */
+export interface SidebarFolderMirror extends Pick<
+  SidebarFolderState,
+  "folders" | "folderIdByThreadKey" | "threadOrderByFolder" | "mainThreadKeyByFolder"
+> {
+  readonly updatedAt: string;
+}
+
+export function serializeSidebarFolderMirror(state: SidebarFolderState, updatedAt: string): string {
+  const { folders, folderIdByThreadKey, threadOrderByFolder, mainThreadKeyByFolder } = state;
+  return JSON.stringify({
+    version: 1,
+    updatedAt,
+    folders,
+    folderIdByThreadKey,
+    threadOrderByFolder,
+    mainThreadKeyByFolder,
+  });
+}
+
+/** Returns null when `text` is no version 1 mirror. */
+export function parseSidebarFolderMirror(text: string): SidebarFolderMirror | null {
+  let raw: unknown;
+  try {
+    raw = JSON.parse(text);
+  } catch {
+    return null;
+  }
+  if (!raw || typeof raw !== "object" || (raw as Record<string, unknown>).version !== 1) {
+    return null;
+  }
+  const { updatedAt } = raw as Record<string, unknown>;
+  const { folders, folderIdByThreadKey, threadOrderByFolder, mainThreadKeyByFolder } =
+    parseSidebarFolderState(raw);
+  return {
+    updatedAt: typeof updatedAt === "string" ? updatedAt : "",
+    folders,
+    folderIdByThreadKey,
+    threadOrderByFolder,
+    mainThreadKeyByFolder,
+  };
+}
+
+function mirrorTime(mirror: SidebarFolderMirror): number {
+  const time = Date.parse(mirror.updatedAt);
+  return Number.isNaN(time) ? Number.NEGATIVE_INFINITY : time;
+}
+
+/**
+ * Unites several computers' folders, newest mirror first: it wins a folder id or a thread
+ * filed in more than one mirror, and the mirror that keeps a folder supplies its order and
+ * main thread. The closed groups are this client's own.
+ */
+export function mergeSidebarFolderMirrors(
+  mirrors: ReadonlyArray<SidebarFolderMirror>,
+  collapsedFolderIds: ReadonlyArray<string>,
+): SidebarFolderState {
+  const newestFirst = [...mirrors].sort((a, b) => mirrorTime(b) - mirrorTime(a));
+  const folders: SidebarFolder[] = [];
+  const folderIdByThreadKey: Record<string, string> = {};
+  const threadOrderByFolder: Record<string, ReadonlyArray<string>> = {};
+  const mainThreadKeyByFolder: Record<string, string> = {};
+  for (const mirror of newestFirst) {
+    for (const folder of mirror.folders) {
+      if (folders.some((candidate) => candidate.id === folder.id)) continue;
+      folders.push(folder);
+      const order = mirror.threadOrderByFolder[folder.id];
+      if (order !== undefined) threadOrderByFolder[folder.id] = order;
+      const main = mirror.mainThreadKeyByFolder[folder.id];
+      if (main !== undefined) mainThreadKeyByFolder[folder.id] = main;
+    }
+    for (const [threadKey, folderId] of Object.entries(mirror.folderIdByThreadKey)) {
+      if (!Object.hasOwn(folderIdByThreadKey, threadKey)) folderIdByThreadKey[threadKey] = folderId;
+    }
+  }
+  return parseSidebarFolderState({
+    ...EMPTY_SIDEBAR_FOLDER_STATE,
+    folders,
+    folderIdByThreadKey,
+    threadOrderByFolder,
+    mainThreadKeyByFolder,
+    collapsedFolderIds,
+  });
+}

@@ -25,6 +25,7 @@ import { resolveServerBackedAppDisplayName } from "./branding.logic";
 import { isElectron } from "./env";
 import { subscribeDraftThreadPromotion, useComposerDraftStore } from "./composerDraftStore";
 import { startDefaultThemeAdoption } from "./hooks/useDefaultTheme";
+import { startSidebarFolderMirror } from "./sidebarFolderMirror";
 import { startEnvironmentThemeRepaint } from "./hooks/useEnvironmentTheme";
 import {
   getClientSettings,
@@ -176,6 +177,7 @@ export function startAppServices(): AppRouter {
   installCommandPaletteCommands(router);
   registerOpenFavoriteEditorCommand();
   startThreadOverlayRetention(router);
+  startSidebarFolderMirror();
   // Drafts promote as their server threads arrive, wherever the user is.
   subscribeDraftThreadPromotion({
     registry: appAtomRegistry,

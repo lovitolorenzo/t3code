@@ -1,4 +1,4 @@
-import { useAtomSet, useAtomValue } from "@effect/atom-react";
+import { useAtomMount, useAtomSet, useAtomValue } from "@effect/atom-react";
 import {
   EMPTY_SIDEBAR_FOLDER_STATE,
   SIDEBAR_FOLDER_COLORS,
@@ -6,6 +6,7 @@ import {
   deleteFolder,
   exportSidebarFolders,
   importSidebarFolders,
+  mergeSidebarFolderMirrors,
   moveThreadsToFolder,
   renameFolder,
   setFolderColor,
@@ -22,22 +23,33 @@ import * as Dialog from "../../components/ui/Dialog";
 import { scopedThreadKey } from "../../lib/scopedEntities";
 import { uuidv4 } from "../../lib/uuid";
 import { mobilePreferencesAtom, updateMobilePreferencesAtom } from "../../state/preferences";
+import { folderMirrorRefreshAtom, folderMirrorsAtom } from "./thread-folder-mirrors";
 import type { ThreadListV2FolderGroup } from "./threadListV2";
 
+const NO_FOLDER_IDS: ReadonlyArray<string> = [];
+
 /**
- * Thread folders on this device. They live only here; copying and pasting them as text carries
- * them to and from a desktop or web client.
+ * Thread folders on this device. When a computer mirrors its folders into a connected
+ * environment, the device shows every computer's folders, read-only; otherwise it shows its
+ * own, which copying and pasting as text carries to and from a desktop or web client.
  */
 export function useThreadFolders() {
   const preferencesResult = useAtomValue(mobilePreferencesAtom);
   const savePreferences = useAtomSet(updateMobilePreferencesAtom);
+  const { mirrors } = useAtomValue(folderMirrorsAtom);
+  useAtomMount(folderMirrorRefreshAtom);
   const loaded = AsyncResult.isSuccess(preferencesResult);
-  const folders =
-    (loaded ? preferencesResult.value.threadFolders : undefined) ?? EMPTY_SIDEBAR_FOLDER_STATE;
+  const readOnly = mirrors.length > 0;
+  const folders = readOnly
+    ? mergeSidebarFolderMirrors(
+        mirrors,
+        (loaded ? preferencesResult.value.mirroredFolderCollapsedIds : undefined) ?? NO_FOLDER_IDS,
+      )
+    : ((loaded ? preferencesResult.value.threadFolders : undefined) ?? EMPTY_SIDEBAR_FOLDER_STATE);
 
   // Transforms read optimistic state so same-frame edits build on each other.
   const update = (transform: (state: SidebarFolderState) => SidebarFolderState) => {
-    if (!loaded) return;
+    if (!loaded || readOnly) return;
     savePreferences({
       transform: (current) => ({
         threadFolders: transform(current.threadFolders ?? EMPTY_SIDEBAR_FOLDER_STATE),
@@ -45,8 +57,24 @@ export function useThreadFolders() {
     });
   };
 
-  const toggleFolder = (folderId: string) =>
-    update((state) => toggleFolderCollapsed(state, folderId));
+  const toggleFolder = (folderId: string) => {
+    if (!readOnly) {
+      update((state) => toggleFolderCollapsed(state, folderId));
+      return;
+    }
+    if (!loaded) return;
+    const shown = new Set(folders.folders.map((folder) => folder.id));
+    savePreferences({
+      transform: (current) => {
+        const collapsed = (current.mirroredFolderCollapsedIds ?? []).filter((id) => shown.has(id));
+        return {
+          mirroredFolderCollapsedIds: collapsed.includes(folderId)
+            ? collapsed.filter((id) => id !== folderId)
+            : [...collapsed, folderId],
+        };
+      },
+    });
+  };
 
   /** Asks for a name, creates the folder and files `threadKeys` in it. */
   const promptNewFolder = (threadKeys: ReadonlyArray<string> = []) =>
@@ -157,11 +185,19 @@ export function useThreadFolders() {
 
   return {
     folders,
+    readOnly,
     toggleFolder,
-    promptNewFolder,
-    handleThreadFolderAction,
     handleFolderMenuAction,
-    copyFolders,
-    pasteFolders,
+    /** Undefined while the folders are mirrored, which hides the thread menu's Folder submenu. */
+    handleThreadFolderAction: readOnly ? undefined : handleThreadFolderAction,
+    /** The thread list's Folders menu, or undefined while the folders are mirrored. */
+    listActions: readOnly
+      ? undefined
+      : {
+          count: folders.folders.length,
+          onNew: () => promptNewFolder(),
+          onPaste: () => void pasteFolders(),
+          onCopy: () => void copyFolders(),
+        },
   } as const;
 }

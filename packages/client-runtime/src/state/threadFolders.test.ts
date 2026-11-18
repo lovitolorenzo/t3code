@@ -23,6 +23,9 @@ import {
   sharedFolderId,
   exportSidebarFolders,
   importSidebarFolders,
+  mergeSidebarFolderMirrors,
+  parseSidebarFolderMirror,
+  serializeSidebarFolderMirror,
 } from "./threadFolders.ts";
 
 const withFolders = createFolder(
@@ -260,5 +263,119 @@ describe("sidebar folders", () => {
     });
     expect(importSidebarFolders(phone, "Folders: CI")).toBeNull();
     expect(importSidebarFolders(phone, "T3 Code folders v1:{oops")).toBeNull();
+  });
+
+  it("mirrors folders to a file without this client's closed groups or drafts", () => {
+    const mac = toggleFolderCollapsed(
+      setFolderMainThread(
+        moveThreadsToFolder(withFolders, ["env:a", "env:b"], "ci"),
+        "ci",
+        "env:b",
+      ),
+      "ci",
+    );
+    const text = serializeSidebarFolderMirror(mac, "2026-11-18T10:00:00.000Z");
+    expect(JSON.parse(text)).toEqual({
+      version: 1,
+      updatedAt: "2026-11-18T10:00:00.000Z",
+      folders: mac.folders,
+      folderIdByThreadKey: { "env:a": "ci", "env:b": "ci" },
+      threadOrderByFolder: {},
+      mainThreadKeyByFolder: { ci: "env:b" },
+    });
+    expect(parseSidebarFolderMirror(text)).toEqual({
+      updatedAt: "2026-11-18T10:00:00.000Z",
+      folders: mac.folders,
+      folderIdByThreadKey: { "env:a": "ci", "env:b": "ci" },
+      threadOrderByFolder: {},
+      mainThreadKeyByFolder: { ci: "env:b" },
+    });
+  });
+
+  it("rejects files that are no mirror and repairs damaged ones", () => {
+    expect(parseSidebarFolderMirror("")).toBeNull();
+    expect(parseSidebarFolderMirror("{oops")).toBeNull();
+    expect(parseSidebarFolderMirror("null")).toBeNull();
+    expect(parseSidebarFolderMirror(JSON.stringify({ version: 2, folders: [] }))).toBeNull();
+    expect(
+      parseSidebarFolderMirror(
+        JSON.stringify({
+          version: 1,
+          folders: [{ id: "ci", name: "CI", color: "blue" }, { id: "" }, "junk"],
+          folderIdByThreadKey: { "env:a": "ci", "env:b": "gone" },
+          mainThreadKeyByFolder: { ci: "env:b" },
+        }),
+      ),
+    ).toEqual({
+      updatedAt: "",
+      folders: [{ id: "ci", name: "CI", color: "blue" }],
+      folderIdByThreadKey: { "env:a": "ci" },
+      threadOrderByFolder: {},
+      mainThreadKeyByFolder: {},
+    });
+  });
+
+  it("unites mirrors newest first, keeping this client's closed groups", () => {
+    const older = {
+      updatedAt: "2026-11-17T09:00:00.000Z",
+      folders: [
+        { id: "shared", name: "Shared (old)", color: "red" as const },
+        { id: "mac1", name: "Mac 1", color: "blue" as const },
+      ],
+      folderIdByThreadKey: { "a:1": "mac1", "a:2": "mac1", "x:1": "mac1", "x:2": "shared" },
+      threadOrderByFolder: { mac1: ["a:2", "a:1"], shared: ["x:2"] },
+      mainThreadKeyByFolder: { mac1: "a:2", shared: "x:2" },
+    };
+    const newer = {
+      updatedAt: "2026-11-18T09:00:00.000Z",
+      folders: [
+        { id: "mac2", name: "Mac 2", color: "green" as const },
+        { id: "shared", name: "Shared", color: "teal" as const },
+      ],
+      folderIdByThreadKey: { "b:1": "mac2", "x:1": "mac2" },
+      threadOrderByFolder: { mac2: ["x:1", "b:1"] },
+      mainThreadKeyByFolder: { mac2: "b:1" },
+    };
+    const merged = mergeSidebarFolderMirrors([older, newer], ["mac1", "gone"]);
+    expect(merged).toEqual({
+      ...EMPTY_SIDEBAR_FOLDER_STATE,
+      folders: [
+        { id: "mac2", name: "Mac 2", color: "green" },
+        { id: "shared", name: "Shared", color: "teal" },
+        { id: "mac1", name: "Mac 1", color: "blue" },
+      ],
+      // x:1 follows the newer mirror; x:2 stays in the folder the newer mirror now owns.
+      folderIdByThreadKey: {
+        "b:1": "mac2",
+        "x:1": "mac2",
+        "a:1": "mac1",
+        "a:2": "mac1",
+        "x:2": "shared",
+      },
+      threadOrderByFolder: { mac2: ["x:1", "b:1"], mac1: ["a:2", "a:1"] },
+      // The newer mirror names no main thread for "shared", so the older one's is dropped.
+      mainThreadKeyByFolder: { mac2: "b:1", mac1: "a:2" },
+      collapsedFolderIds: ["mac1"],
+    });
+    expect(mergeSidebarFolderMirrors([newer, older], ["mac1", "gone"])).toEqual(merged);
+    expect(mergeSidebarFolderMirrors([], ["mac1"])).toEqual(EMPTY_SIDEBAR_FOLDER_STATE);
+  });
+
+  it("puts mirrors without a valid time last", () => {
+    const undated = {
+      updatedAt: "",
+      folders: [{ id: "f", name: "Undated", color: "red" as const }],
+      folderIdByThreadKey: { "a:1": "f" },
+      threadOrderByFolder: {},
+      mainThreadKeyByFolder: {},
+    };
+    const dated = {
+      ...undated,
+      updatedAt: "2026-01-01T00:00:00.000Z",
+      folders: [{ id: "f", name: "Dated", color: "blue" as const }],
+    };
+    expect(mergeSidebarFolderMirrors([undated, dated], []).folders).toEqual([
+      { id: "f", name: "Dated", color: "blue" },
+    ]);
   });
 });
