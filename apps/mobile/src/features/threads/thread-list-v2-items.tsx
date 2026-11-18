@@ -1518,11 +1518,39 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
       </RowPressable>
     );
 
+  // Like the desktop sidebar: a bar in the folder's color, with the other threads indented
+  // under the folder's main thread.
+  const folder =
+    props.folderId == null
+      ? undefined
+      : props.folders?.find((candidate) => candidate.id === props.folderId);
+  const folderIndent = folder !== undefined && !props.isFolderMain ? 12 : 0;
+  const folderBar =
+    folder === undefined ? null : (
+      <View
+        pointerEvents="none"
+        style={{
+          position: "absolute",
+          left: folderIndent + (sidebarPane ? 4 : 8),
+          top: 6,
+          bottom: 6,
+          width: 3,
+          borderRadius: 1.5,
+          backgroundColor: SIDEBAR_FOLDER_COLORS[folder.color],
+        }}
+      />
+    );
+
   if (!canOperateThread)
-    return <View style={rowAppearance.swipeContainerStyle}>{rowContent(() => {})}</View>;
+    return (
+      <View style={{ paddingLeft: folderIndent }}>
+        <View style={rowAppearance.swipeContainerStyle}>{rowContent(() => {})}</View>
+        {folderBar}
+      </View>
+    );
 
   return (
-    <View collapsable={false}>
+    <View collapsable={false} style={{ paddingLeft: folderIndent }}>
       {customSnoozeOpen && (
         <CustomSnoozeSheet onClose={() => setCustomSnoozeOpen(false)} onSnooze={handleSnooze} />
       )}
@@ -1574,6 +1602,7 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
           </Menu>
         )}
       </ThreadSwipeable>
+      {folderBar}
     </View>
   );
 });
