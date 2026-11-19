@@ -1610,6 +1610,19 @@ describe("Working section beta", () => {
     expect(off.workingCount).toBe(0);
   });
 
+  it("keeps a working thread in its folder instead of the shelf", () => {
+    const folders = moveThreadsToFolder(
+      createFolder(EMPTY_SIDEBAR_FOLDER_STATE, { id: "ci", name: "CI" }),
+      [`${environmentId}:working`],
+      "ci",
+    );
+    const layout = build({ folders });
+    expect(layout.workingCount).toBe(0);
+    expect(layout.workingShelfHeaderIndex).toBeNull();
+    expect(layout.folderGroups.map((group) => [group.folder.id, group.count])).toEqual([["ci", 1]]);
+    expect(ids(layout)).toContain("working");
+  });
+
   it("keeps an inactive row in Working during the shared grace and returns it on expiry", () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date(NOW));

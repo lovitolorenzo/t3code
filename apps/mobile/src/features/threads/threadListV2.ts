@@ -778,7 +778,16 @@ export function buildThreadListV2Items(input: {
   const orderedActive = workingShelfEnabled
     ? sortInboxThreadsByReturn(active, input.inboxReturnAt)
     : applyPendingThreadOrder(sortThreadsForListV2(active), "active", pending);
-  const orderedWorking = sortWorkingThreadsBySend(working);
+  const folders = input.folders ?? EMPTY_SIDEBAR_FOLDER_STATE;
+  // Like the desktop sidebar, a working thread stays in its folder; the shelf keeps the rest.
+  const folderIds = new Set(folders.folders.map((folder) => folder.id));
+  const isFiled = (thread: EnvironmentThreadShell) => {
+    const folderId = folders.folderIdByThreadKey[`${thread.environmentId}:${thread.id}`];
+    return folderId !== undefined && folderIds.has(folderId);
+  };
+  const sortedWorking = sortWorkingThreadsBySend(working);
+  const filedWorking = sortedWorking.filter(isFiled);
+  const orderedWorking = sortedWorking.filter((thread) => !isFiled(thread));
   const orderedSnoozed = [...snoozed].sort(
     (left, right) =>
       parseTimestampMs(left.snoozedUntil ?? "") - parseTimestampMs(right.snoozedUntil ?? ""),
@@ -845,9 +854,8 @@ export function buildThreadListV2Items(input: {
       wokeAt: resolveThreadListV2WokeAt(thread, { now }),
       isLast: false,
     });
-  const folders = input.folders ?? EMPTY_SIDEBAR_FOLDER_STATE;
   const activeByFolder = groupThreadsByFolder(
-    orderedActive,
+    [...orderedActive, ...filedWorking],
     (thread) => `${thread.environmentId}:${thread.id}`,
     folders.folders,
     folders.folderIdByThreadKey,
