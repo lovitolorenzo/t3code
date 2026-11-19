@@ -1,7 +1,7 @@
 name: Mobile iOS unsigned IPA
 
 # Builds an unsigned Release IPA of the Personal Team variant, to be signed and
-# installed with a free Apple ID by a sideloading tool such as Sideloadly.
+# installed with a free Apple ID by a sideloading tool such as xtool.
 
 on:
   push:
